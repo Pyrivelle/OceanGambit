@@ -3,9 +3,10 @@
 #include "ImpactExplosion.h"
 #include "ShipManager.h"
 #include "NavalEffectsPreview.h"
-#include "../battle/DemoScenario.h"
+#include "../battle/ProjectileSystem.h"
 
 #include <array>
+#include <unordered_map>
 #include <vector>
 
 struct EffectsStatus {
@@ -18,29 +19,25 @@ class NavalEffects {
 public:
     NavalEffects(osgViewer::Viewer& viewer, osg::Group& root, ShipManager& ships)
         : viewer_(viewer), root_(root), ships_(ships) {}
-    void launch(const ShotCue& event, double now);
+    void launch(unsigned id, const MuzzlePose& pose, double now);
+    void sample(unsigned id, const osg::Vec3d& position, double now);
+    void contact(unsigned id, const std::optional<ProjectileContact>& hit, double now);
     void advance(double now);
     EffectsStatus status() const;
 
 private:
-    struct Shot {
-        unsigned id;
-        unsigned from;
-        osg::Vec3d cue;
-        double start;
-        bool recorded = false;
-        osg::ref_ptr<osg::MatrixTransform> target;
-        osg::ref_ptr<osg::MatrixTransform> decalLayer;
-        osg::ref_ptr<ShipDecals> decals;
+    struct Flight {
+        osg::Vec3d position;
         osg::ref_ptr<NavalEffectsPreview> effects;
     };
 
-    void updateShot(Shot& shot, double now);
+    void markShip(unsigned target, const ProjectileContact& hit, double now);
 
     osgViewer::Viewer& viewer_;
     osg::Group& root_;
     ShipManager& ships_;
-    std::vector<Shot> shots_;
+    std::unordered_map<unsigned, Flight> flights_;
+    std::array<osg::ref_ptr<ShipDecals>, 2> decals_;
     std::vector<ImpactExplosion> explosions_;
     unsigned explosionsStarted_ = 0;
     std::array<unsigned, 2> decalCounts_{};

@@ -12,6 +12,6 @@ std::array<ShipPose, 2> DemoScenario::poses(double now) const {
 std::optional<ShotCue> DemoScenario::nextShot(double now) {
     if (now < .4 + shotCount_ * 2.4) return std::nullopt;
     const unsigned from = shotCount_ % 2;
-    const bool splash = shotCount_ % 3 == 2;
-    return ShotCue{++shotCount_, from, 1 - from, splash};
+    const double yawOffset = shotCount_ % 3 == 2 ? osg::PI / 15 : 0;
+    return ShotCue{++shotCount_, from, 1 - from, yawOffset};
 }

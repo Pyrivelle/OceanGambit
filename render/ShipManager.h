@@ -4,11 +4,13 @@
 #include <string>
 #include <vector>
 
+struct MuzzlePose { osg::Vec3d position, forward; };
+
 class Ship {
 public:
     explicit Ship(const std::string& modelPath);
     void place(double x, double y, double heading);
-    osg::Vec3d poseTurret(const osg::Vec3d& cue);
+    MuzzlePose poseTurret(const osg::Vec3d& cue);
     osg::MatrixTransform& node() const { return *placement_; }
     osg::Node& model() const { return *model_; }
 

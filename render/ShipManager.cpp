@@ -56,7 +56,7 @@ Ship::Ship(const std::string& modelPath) {
     placement_->addChild(model_);
 }
 
-Point Ship::poseTurret(const Point& cue) {
+MuzzlePose Ship::poseTurret(const Point& cue) {
     const auto inverse = osg::Matrix::inverse(placement_->getMatrix());
     const Point direction = cue * inverse - muzzle_;
     const Point yawPivot(0, 26.6, 9.4), pitchPivot(0, 26.7, 10.7);
@@ -66,7 +66,8 @@ Point Ship::poseTurret(const Point& cue) {
                         osg::Matrix::rotate(yaw, 0, 0, 1) * osg::Matrix::translate(yawPivot));
     barrelPitch_->setMatrix(osg::Matrix::translate(-pitchPivot) *
                           osg::Matrix::rotate(pitch, 1, 0, 0) * osg::Matrix::translate(pitchPivot));
-    return muzzle_ * barrelPitch_->getMatrix() * turretYaw_->getMatrix() * placement_->getMatrix();
+    const auto world = barrelPitch_->getMatrix() * turretYaw_->getMatrix() * placement_->getMatrix();
+    return {muzzle_ * world, osg::Matrix::transform3x3(Point(0, 1, 0), world)};
 }
 
 void Ship::place(double x, double y, double heading) {

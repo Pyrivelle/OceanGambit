@@ -85,7 +85,7 @@ private:
             if (frame_ == 25) capture("flight.png");
             if (frame_ == 61) capture("impact.png");
             if (frame_ == 83) capture("impact-smoke.png");
-            if (frame_ == 208) capture("splash.png");
+            if (frame_ == 220) capture("splash.png");
         }
         if (check_ && frame_++ == 240) {
             const auto state = scene_.status();

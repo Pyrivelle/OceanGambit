@@ -4,7 +4,7 @@
 #include <optional>
 
 struct ShipPose { double x, y, heading; };
-struct ShotCue { unsigned id, from, to; bool splash; };
+struct ShotCue { unsigned id, from, to; double yawOffset; };
 
 class DemoScenario {
 public:

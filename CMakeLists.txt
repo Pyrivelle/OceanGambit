@@ -14,6 +14,7 @@ add_executable(OceanGambit
     app/BattleView.cpp
     app/LocalSettings.cpp
     battle/DemoScenario.cpp
+    battle/ProjectileSystem.cpp
     render/BattleScene.cpp
     render/ImpactExplosion.cpp
     render/NavalEffects.cpp
@@ -49,3 +50,11 @@ add_custom_target(OceanGambitRuntime ALL
         -P "${PROJECT_SOURCE_DIR}/cmake/DeployRuntime.cmake"
     DEPENDS OceanGambit
     VERBATIM)
+
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(ProjectileCheck tests/ProjectileCheck.cpp battle/ProjectileSystem.cpp)
+    target_compile_features(ProjectileCheck PRIVATE cxx_std_17)
+    target_include_directories(ProjectileCheck PRIVATE ${OPENSCENEGRAPH_INCLUDE_DIRS} "${OPENGL_HEADERS}")
+    add_test(NAME ProjectileCheck COMMAND ProjectileCheck)
+endif()

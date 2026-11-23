@@ -13,7 +13,7 @@ osg::ref_ptr<TritonOceanSurface> loadOcean(osg::Group& root) {
     options.resourcePath = resources;
     options.windSpeedMetersPerSecond = 8.0;
     osg::ref_ptr<TritonOceanSurface> ocean = new TritonOceanSurface(options);
-    ocean->setSeaLevel(-.15);
+    ocean->setSeaLevel(0);
     root.addChild(ocean);
     return ocean;
 }
