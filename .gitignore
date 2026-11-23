@@ -1,0 +1,26 @@
+# Build products and deployed runtime
+/build/
+/build-*/
+/cmake-build-*/
+/bin/
+/out/
+
+# CMake in-source outputs and local presets
+/CMakeCache.txt
+/CMakeFiles/
+/cmake_install.cmake
+/install_manifest.txt
+/CMakeUserPresets.json
+
+# Visual Studio local state
+/.vs/
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+
+# Local configuration and diagnostic output
+.env
+.env.*
+!.env.example
+*.log
