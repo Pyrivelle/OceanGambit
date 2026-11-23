@@ -9,6 +9,7 @@
 #include <osgUtil/IntersectionVisitor>
 #include <osgUtil/LineSegmentIntersector>
 
+#include <cmath>
 #include <iomanip>
 #include <iostream>
 
