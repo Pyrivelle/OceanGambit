@@ -1,3 +1,3 @@
 #pragma once
 
-int runBattleView(bool moving, bool check);
+int runBattleView(bool moving, bool check, bool quadratic);
