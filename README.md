@@ -45,3 +45,16 @@ CMake 缓存项 `OSG_DIR`、`OPENGL_HEADERS`、`NAVAL_PREVIEW`、`OSG_RUNTIME`�
 演示脚本只提供射击时机和瞄准偏角。弹丸按 0.01 秒步进，使用游戏调校的下坠和指数速度阻尼，散布在出膛时由同一随机种子生成。判定使用当步舰船网格和 Z=0 海面，跳过发射舰并选取线段上最先接触的位置。命中后沿用贴花、爆炸和水柱特效。参数是游戏调校值。
 
 构建完成后，可用 `ctest --test-dir build -C Release --output-on-failure` 检查下坠、阻尼、散布复现和单次接触。窗口验收还会检查静止或移动场景中的实际舰体接触与落水。
+
+## 可切换弹药阻力
+
+默认保留原始指数阻尼演示参数：初速 670 m/s、下坠 16 m/s²、指数衰减 0.06 s⁻¹。
+使用 `--drag-quadratic` 切换平方空气阻力，重力采用 9.80665 m/s²、等效阻力系数 `0.06/670 m⁻¹`，初速仍为 670 m/s。平方阻力的系数只是与原模型在初速处匹配阻力减速度的过渡值，并非实测炮弹参数。
+
+```powershell
+.\OpenOceanGambit.cmd --drag-quadratic
+.\OpenOceanGambit.cmd --check --moving --drag-quadratic
+ctest --test-dir build -C Release --output-on-failure
+```
+
+`AmmoConfig` 可按弹药类型配置初速、下坠、阻力模型、散布与寿命；旧 `ProjectileTuning` 名称保留为兼容别名。炮塔仰角现在依据当前目标位置和相同弹道积分器求近似低弧解，暂未加入移动目标提前量。散布仍使用带种子的随机发射角，保持回放可复现。
