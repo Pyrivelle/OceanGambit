@@ -15,7 +15,7 @@
 namespace {
 class BattleView : public QOpenGLWidget {
 public:
-    BattleView(bool moving, bool check) : moving_(moving), check_(check), scene_(viewer_, moving) {
+    BattleView(bool moving, bool check, bool quadratic) : moving_(moving), check_(check), scene_(viewer_, moving, quadratic) {
         viewer_.setThreadingModel(osgViewer::Viewer::SingleThreaded);
         setWindowTitle("OceanGambit | 020528 x2 | Triton");
         resize(1200, 740);
@@ -134,8 +134,8 @@ private:
 };
 }
 
-int runBattleView(bool moving, bool check) {
-    BattleView view(moving, check);
+int runBattleView(bool moving, bool check, bool quadratic) {
+    BattleView view(moving, check, quadratic);
     view.show();
     return QApplication::exec();
 }
