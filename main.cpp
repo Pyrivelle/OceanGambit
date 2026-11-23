@@ -17,7 +17,8 @@ int main(int argc, char** argv) {
     try {
         loadLocalSettings();
         return runBattleView(args.contains("--moving"),
-                             args.contains("--check") || args.contains("--window-check"));
+                             args.contains("--check") || args.contains("--window-check"),
+                             args.contains("--drag-quadratic"));
     } catch (const std::exception& e) {
         std::cerr << e.what() << std::endl;
         return 1;

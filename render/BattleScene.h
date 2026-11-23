@@ -15,7 +15,7 @@ struct SceneStatus {
 
 class BattleScene {
 public:
-    BattleScene(osgViewer::Viewer& viewer, bool moving);
+    BattleScene(osgViewer::Viewer& viewer, bool moving, bool quadratic = false);
     ~BattleScene();
     osg::Group& root() const;
     void advance(double now);
