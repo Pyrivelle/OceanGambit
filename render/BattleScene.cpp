@@ -21,8 +21,9 @@ void logProjectile(double time, unsigned id, unsigned source, const char* event,
 }
 
 struct BattleScene::Impl {
-    Impl(osgViewer::Viewer& viewer, bool moving)
-        : viewer_(viewer), ships_(*root_), scenario_(moving), effects_(viewer, *root_, ships_) {
+    Impl(osgViewer::Viewer& viewer, bool moving, bool quadratic)
+        : viewer_(viewer), ships_(*root_), scenario_(moving), effects_(viewer, *root_, ships_),
+          projectiles_(quadratic ? AmmoConfig::quadraticDemo() : AmmoConfig::exponentialDemo()) {
         loadSky(*viewer_.getCamera());
         ocean_ = loadOcean(*root_);
         loadShipManager();
@@ -47,14 +48,22 @@ struct BattleScene::Impl {
     }
 
     void launch(const ShotCue& cue, double time) {
-        const auto poses = scenario_.poses(0);
-        const auto& source = poses.at(cue.from);
+        const auto poses = scenario_.poses(time);
         const auto& target = poses.at(cue.to);
-        const osg::Vec3d start(source.x, source.y, 0);
-        const auto heading = osg::Matrix::rotate(cue.yawOffset, 0, 0, 1);
-        const auto offset = osg::Matrix::transform3x3(
-            osg::Vec3d(target.x - source.x, target.y - source.y, 22), heading);
-        const auto muzzle = ships_.ship(cue.from).poseTurret(start + offset);
+        const osg::Vec3d targetPoint(target.x, target.y, 3.8);
+        // First pose provides the current muzzle origin; use it to estimate elevation.
+        const auto initial = ships_.ship(cue.from).poseTurret(targetPoint);
+        osg::Vec3d horizontal = targetPoint - initial.position;
+        horizontal.z() = 0;
+        const double range = horizontal.length();
+        if (range > 0) horizontal /= range;
+        horizontal = osg::Matrix::transform3x3(horizontal,
+            osg::Matrix::rotate(cue.yawOffset, 0, 0, 1));
+        const double elevation = projectiles_.aimElevation(
+            range, targetPoint.z() - initial.position.z());
+        const osg::Vec3d aimPoint = initial.position + horizontal * range +
+            osg::Vec3d(0, 0, std::tan(elevation) * range);
+        const auto muzzle = ships_.ship(cue.from).poseTurret(aimPoint);
         const auto previous = scenario_.poses(time - ProjectileSystem::interval).at(cue.from);
         const auto current = scenario_.poses(time).at(cue.from);
         const osg::Vec3d motion((current.x - previous.x) / ProjectileSystem::interval,
@@ -119,8 +128,8 @@ struct BattleScene::Impl {
     unsigned tick_ = 0;
 };
 
-BattleScene::BattleScene(osgViewer::Viewer& viewer, bool moving)
-    : impl_(std::make_unique<Impl>(viewer, moving)) {}
+BattleScene::BattleScene(osgViewer::Viewer& viewer, bool moving, bool quadratic)
+    : impl_(std::make_unique<Impl>(viewer, moving, quadratic)) {}
 BattleScene::~BattleScene() = default;
 osg::Group& BattleScene::root() const { return *impl_->root_; }
 void BattleScene::advance(double now) { impl_->advance(now); }
