@@ -52,13 +52,12 @@ add_custom_target(OceanGambitRuntime ALL
         "-DQT_RUNTIME=${QT_RUNTIME}"
         "-DTRITON_SDK=${TRITON_SDK}"
         "-DCRT_DLLS=${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS}"
+        "-DSHIP_CONFIG=${PROJECT_SOURCE_DIR}/config/ships"
         -P "${PROJECT_SOURCE_DIR}/cmake/DeployRuntime.cmake"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
         "${PROJECT_SOURCE_DIR}/config/ShipCameras.json" "$<TARGET_FILE_DIR:OceanGambit>/ShipCameras.json"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
         "${PROJECT_SOURCE_DIR}/config/ShipWeapons.json" "$<TARGET_FILE_DIR:OceanGambit>/ShipWeapons.json"
-    COMMAND "${CMAKE_COMMAND}" -E copy_directory
-        "${PROJECT_SOURCE_DIR}/config/ships" "$<TARGET_FILE_DIR:OceanGambit>/ships"
     DEPENDS OceanGambit
     VERBATIM)
 

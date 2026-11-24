@@ -75,7 +75,7 @@ $env:PATH = "$PWD/bin;$env:PATH"
 
 Release 构建将可执行文件放入 `bin/`，并部署 Qt 平台插件、OSG/DMU 的 DLL、Triton 后端和资源。可直接运行 `bin/OceanGambit.exe`，也可使用根目录的启动脚本。
 
-CMake 缓存项 `OSG_DIR`、`OPENGL_HEADERS`、`OSG_RUNTIME`、`QT_RUNTIME`、`VEYLAXIS` 和 `TRITON_SDK` 可覆盖构建与部署来源。双舰演示通过舰型 code `020528` 读取 `config/ships/020528.json`，部署后位于 `bin/ships/`。可通过 `OCEAN_SHIP_CONFIG_DIR` 指定其他舰型目录。模型默认从 `OCEAN_SHIP_MODEL_ROOT`（缺省为 `D:/Dragon/_Data`）下的分类/舰型目录加载，也可通过 `OCEAN_MODEL` 指定同名模型文件。读取设置及许可证优先使用进程环境，其次读取 `OCEAN_CONFIG` 指定的本机配置。
+CMake 缓存项 `OSG_DIR`、`OPENGL_HEADERS`、`OSG_RUNTIME`、`QT_RUNTIME`、`VEYLAXIS` 和 `TRITON_SDK` 可覆盖构建与部署来源。双舰演示使用本地舰型定义。首次检出仓库时，请将已转换的 `020528.json` 放入 `config/ships/`，构建部署会将它复制到 `bin/ships/`。可在没有这份配置时编译，运行双舰场景前需提供该文件。可通过 `OCEAN_SHIP_CONFIG_DIR` 指定其他舰型目录。模型默认从 `OCEAN_SHIP_MODEL_ROOT`（缺省为 `D:/Dragon/_Data`）下的分类/舰型目录加载，也可通过 `OCEAN_MODEL` 指定同名模型文件。读取设置及许可证优先使用进程环境，其次读取 `OCEAN_CONFIG` 指定的本机配置。
 
 演示脚本只提供射击时机和瞄准偏角。弹丸按 0.01 秒步进，默认使用游戏调校的下坠和指数速度阻尼（可切换平方阻力），散布在出膛时由同一随机种子生成。判定使用当步舰船网格和 Z=0 海面，跳过发射舰并选取线段上最先接触的位置。命中后沿用贴花、爆炸和水柱特效。参数是游戏调校值。
 
