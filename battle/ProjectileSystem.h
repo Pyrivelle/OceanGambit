@@ -11,6 +11,17 @@
 // These parameters describe a projectile/ammunition type, not a global battle rule.
 enum class DragMode { Exponential, Quadratic, WowsShell };
 enum class FireArc { Low, High };
+// A failed shot is not always out of range: elevation restrictions and
+// numerical/geometry failures must be reported separately.
+enum class FireControlStatus {
+    Ready, FallbackLow, OutOfRange, ElevationLimited, NoSolution, InvalidTarget
+};
+struct FireControlSolution {
+    std::optional<double> elevation;
+    FireArc selectedArc = FireArc::Low;
+    FireControlStatus status = FireControlStatus::InvalidTarget;
+};
+const char* fireControlStatusName(FireControlStatus status);
 
 struct AmmoConfig {
     double launchPace = 670.0;   // m/s
@@ -76,6 +87,9 @@ public:
     std::optional<double> solveElevation(double horizontalRange, double heightDifference,
                                          FireArc arc, double minElevationRad,
                                          double maxElevationRad) const;
+    FireControlSolution fireControlSolution(double horizontalRange, double heightDifference,
+                                            FireArc preferred, double minElevationRad,
+                                            double maxElevationRad) const;
     const AmmoConfig& ammo() const { return ammo_; }
     static constexpr double interval = .01;
 

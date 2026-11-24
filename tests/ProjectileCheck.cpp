@@ -93,17 +93,31 @@ int main() {
     doubleArc.spread = 0;
     doubleArc.lifetime = 180;
     ProjectileSystem solver(doubleArc);
-    const auto lowArc = solver.solveElevation(1000, 0, FireArc::Low, 0.0, 1.55);
-    const auto highArc = solver.solveElevation(1000, 0, FireArc::High, 0.0, 1.55);
+    const auto lowArc = solver.solveElevation(1000, 0, FireArc::Low, 0.0, 1.565);
+    const auto highArc = solver.solveElevation(1000, 0, FireArc::High, 0.0, 1.565);
     const bool twoArcs = lowArc && highArc && *lowArc < *highArc &&
         *lowArc < .1 && *highArc > 1.4 &&
         std::abs(*lowArc + *highArc - 1.5707963267948966) < .02;
     const auto restrictedHigh = solver.solveElevation(1000, 0, FireArc::High, 0.0, .6);
-    // A high-arc profile cannot silently fall back to the low branch.
-    const bool restricted = !restrictedHigh.has_value();
+    // Strict angle-only API does not fallback; diagnostic API does.
+    const auto fallback = solver.fireControlSolution(1000, 0, FireArc::High, 0.0, .6);
+    const bool restricted = !restrictedHigh.has_value() &&
+        fallback.status == FireControlStatus::FallbackLow &&
+        fallback.selectedArc == FireArc::Low &&
+        fallback.elevation && lowArc &&
+        std::abs(*fallback.elevation - *lowArc) < 1e-4;
     const auto shortLife = AmmoConfig::wowsDemo();
-    const bool noLongRange = !ProjectileSystem(shortLife).solveElevation(
-        1000000, 0, FireArc::High, 0.0, 1.55).has_value();
+    const auto beyond = ProjectileSystem(shortLife).fireControlSolution(
+        1000000, 0, FireArc::High, 0.0, 1.565);
+    const bool noLongRange = !beyond.elevation &&
+        beyond.status == FireControlStatus::OutOfRange;
+    const auto angleLimited = solver.fireControlSolution(
+        1000, 0, FireArc::Low, .2, .6);
+    const bool elevationLimit = !angleLimited.elevation &&
+        angleLimited.status == FireControlStatus::ElevationLimited;
+    const auto invalidTarget = solver.fireControlSolution(
+        -1, 0, FireArc::Low, 0, 1);
+    const bool invalid = invalidTarget.status == FireControlStatus::InvalidTarget;
 
     ProjectileSystem stopped;
     stopped.launch(1, 0, {}, {1, 0, 0}, {});
@@ -120,6 +134,7 @@ int main() {
               << " inverse_legacy=" << inverseLegacy
               << " inverse_wows=" << inverseWows
               << " unreachable=" << unreachable << " two_arcs=" << twoArcs
-              << " restricted=" << restricted << " no_long_range=" << noLongRange << '\n';
-    return arc && damping && replay && singleContact && quadraticDrag && quadraticReplay && aim && inverseLegacy && inverseWows && unreachable && twoArcs && restricted && noLongRange ? 0 : 1;
+              << " restricted=" << restricted << " no_long_range=" << noLongRange
+              << " elevation_limit=" << elevationLimit << " invalid=" << invalid << '\n';
+    return arc && damping && replay && singleContact && quadraticDrag && quadraticReplay && aim && inverseLegacy && inverseWows && unreachable && twoArcs && restricted && noLongRange && elevationLimit && invalid ? 0 : 1;
 }

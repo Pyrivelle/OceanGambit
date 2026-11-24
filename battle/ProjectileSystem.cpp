@@ -69,9 +69,26 @@ void ProjectileSystem::step(const std::function<std::optional<ProjectileContact>
     }), active_.end());
 }
 
+namespace {
+struct AngleBracket { double lo, hi; };
+
+// The same forward integration is used by both live projectiles and fire control.
+}
+
+const char* fireControlStatusName(FireControlStatus status) {
+    switch (status) {
+    case FireControlStatus::Ready: return "ready";
+    case FireControlStatus::FallbackLow: return "high_arc_unavailable_fallback_low";
+    case FireControlStatus::OutOfRange: return "out_of_range";
+    case FireControlStatus::ElevationLimited: return "elevation_limit";
+    case FireControlStatus::NoSolution: return "no_ballistic_solution";
+    case FireControlStatus::InvalidTarget: return "invalid_target";
+    }
+    return "unknown";
+}
+
 double ProjectileSystem::aimElevation(double horizontalRange, double heightDifference) const {
-    const auto result = solveElevation(horizontalRange, heightDifference);
-    return result.value_or(0.0); // legacy API; use solveElevation to check reachability
+    return solveElevation(horizontalRange, heightDifference).value_or(0.0);
 }
 
 std::optional<double> ProjectileSystem::solveElevation(
@@ -82,13 +99,26 @@ std::optional<double> ProjectileSystem::solveElevation(
 std::optional<double> ProjectileSystem::solveElevation(
     double horizontalRange, double heightDifference, FireArc arc,
     double minElevationRad, double maxElevationRad) const {
+    const auto solution = fireControlSolution(
+        horizontalRange, heightDifference, arc, minElevationRad, maxElevationRad);
+    // The strict API promises the requested branch; do not expose automatic
+    // high-to-low fallback to older callers expecting a high-arc-only result.
+    if (solution.status == FireControlStatus::FallbackLow && arc == FireArc::High)
+        return std::nullopt;
+    return solution.elevation;
+}
+
+FireControlSolution ProjectileSystem::fireControlSolution(
+    double horizontalRange, double heightDifference, FireArc preferred,
+    double minElevationRad, double maxElevationRad) const {
+    FireControlSolution result;
     if (!std::isfinite(horizontalRange) || !std::isfinite(heightDifference) ||
         !std::isfinite(minElevationRad) || !std::isfinite(maxElevationRad) ||
-        horizontalRange <= 0 || ammo_.launchPace <= 0 ||
+        horizontalRange <= 0 || ammo_.launchPace <= 0 || ammo_.lifetime <= 0 ||
         minElevationRad >= maxElevationRad ||
         minElevationRad <= -1.5707963267948966 ||
         maxElevationRad >= 1.5707963267948966)
-        return std::nullopt;
+        return result;
 
     const auto heightAtRange = [&](double angle) -> std::optional<double> {
         osg::Vec3d p(0, 0, 0);
@@ -96,55 +126,103 @@ std::optional<double> ProjectileSystem::solveElevation(
                      ammo_.launchPace * std::sin(angle));
         ocean_gambit::ballistics::MotionHistory history;
         const int maxSteps = static_cast<int>(std::ceil(ammo_.lifetime / interval));
-        for (int i = 0; i < maxSteps; ++i) {
-            const osg::Vec3d old = p;
+        for (int step = 0; step < maxSteps; ++step) {
+            const osg::Vec3d before = p;
             integrate(p, v, history);
             if (p.x() >= horizontalRange) {
-                const double dx = p.x() - old.x();
+                const double dx = p.x() - before.x();
                 if (dx <= 0) return std::nullopt;
-                const double t = (horizontalRange - old.x()) / dx;
-                return old.z() + (p.z() - old.z()) * t;
+                const double fraction = (horizontalRange - before.x()) / dx;
+                return before.z() + (p.z() - before.z()) * fraction;
             }
             if (v.x() <= 0) break;
         }
         return std::nullopt;
     };
 
-    // Scan the full allowed gun envelope for signed crossings. The first
-    // crossing is the low arc and the last is the high arc. A missing trajectory
-    // (range not reached before expiration) must NOT become a fake high root.
-    struct Bracket { double lo, hi; };
-    std::vector<Bracket> brackets;
-    const double scanStep = 0.025;
-    std::optional<double> previous;
-    double previousAngle = minElevationRad;
-    const int count = std::max(1, static_cast<int>(
-        std::ceil((maxElevationRad - minElevationRad) / scanStep)));
-    for (int i = 0; i <= count; ++i) {
-        const double angle = minElevationRad +
-            (maxElevationRad - minElevationRad) * i / count;
-        const auto height = heightAtRange(angle);
-        if (height && previous) {
-            const double a = *previous - heightDifference;
-            const double b = *height - heightDifference;
-            if ((a <= 0 && b >= 0) || (a >= 0 && b <= 0))
-                brackets.push_back({previousAngle, angle});
+    const auto findBrackets = [&](double minAngle, double maxAngle) {
+        std::vector<AngleBracket> brackets;
+        const int intervals = std::max(1, static_cast<int>(
+            std::ceil((maxAngle - minAngle) / .015)));
+        std::optional<double> previousHeight;
+        double previousAngle = minAngle;
+        for (int i = 0; i <= intervals; ++i) {
+            const double angle = minAngle + (maxAngle - minAngle) * i / intervals;
+            const auto h = heightAtRange(angle);
+            if (h && previousHeight) {
+                const double a = *previousHeight - heightDifference;
+                const double b = *h - heightDifference;
+                if ((a <= 0 && b >= 0) || (a >= 0 && b <= 0))
+                    brackets.push_back({previousAngle, angle});
+            }
+            previousHeight = h;
+            previousAngle = angle;
         }
-        previous = height;
-        previousAngle = angle;
+        return brackets;
+    };
+
+    const auto refine = [&](AngleBracket bracket) -> std::optional<double> {
+        const auto left = heightAtRange(bracket.lo);
+        if (!left) return std::nullopt;
+        const bool increasing = *left < heightDifference;
+        for (int j = 0; j < 28; ++j) {
+            const double mid = (bracket.lo + bracket.hi) * .5;
+            const auto h = heightAtRange(mid);
+            if (!h) return std::nullopt;
+            if ((*h < heightDifference) == increasing) bracket.lo = mid;
+            else bracket.hi = mid;
+        }
+        return (bracket.lo + bracket.hi) * .5;
+    };
+
+    const auto brackets = findBrackets(minElevationRad, maxElevationRad);
+    if (!brackets.empty()) {
+        // A single root is the low arc; high preference only selects the
+        // second root when it actually exists inside the weapon envelope.
+        const bool highAvailable = brackets.size() >= 2;
+        const bool useHigh = preferred == FireArc::High && highAvailable;
+        result.selectedArc = useHigh ? FireArc::High : FireArc::Low;
+        result.elevation = refine(useHigh ? brackets.back() : brackets.front());
+        if (result.elevation) {
+            result.status = preferred == FireArc::High && !highAvailable
+                ? FireControlStatus::FallbackLow : FireControlStatus::Ready;
+            return result;
+        }
     }
-    if (brackets.empty() || (arc == FireArc::High && brackets.size() < 2))
-        return std::nullopt;
-    auto bracket = arc == FireArc::Low ? brackets.front() : brackets.back();
-    const auto leftHeight = heightAtRange(bracket.lo);
-    if (!leftHeight) return std::nullopt;
-    const bool leftBelow = *leftHeight < heightDifference;
-    for (int iteration = 0; iteration < 30; ++iteration) {
-        const double mid = (bracket.lo + bracket.hi) * .5;
-        const auto height = heightAtRange(mid);
-        if (!height) return std::nullopt;
-        if ((*height < heightDifference) == leftBelow) bracket.lo = mid;
-        else bracket.hi = mid;
+
+    // Distinguish a physical firing solution outside the gun's elevation
+    // envelope from a projectile that cannot reach the target at all.
+    const auto physical = findBrackets(-1.50, 1.569);
+    if (!physical.empty()) {
+        result.status = FireControlStatus::ElevationLimited;
+        return result;
     }
-    return (bracket.lo + bracket.hi) * .5;
+
+    // Estimate the maximum horizontal distance at which a trajectory descends
+    // through the target height (not just whether x reaches the target range).
+    // This is a diagnostic only, invoked after regular root solving fails.
+    double farthest = 0;
+    constexpr int samples = 80;
+    for (int sample = 0; sample <= samples; ++sample) {
+        const double angle = -0.10 + 1.65 * sample / samples;
+        osg::Vec3d p(0, 0, 0);
+        osg::Vec3d v(ammo_.launchPace * std::cos(angle), 0,
+                     ammo_.launchPace * std::sin(angle));
+        ocean_gambit::ballistics::MotionHistory history;
+        const int steps = static_cast<int>(std::ceil(ammo_.lifetime / interval));
+        for (int step = 0; step < steps; ++step) {
+            const auto before = p;
+            integrate(p, v, history);
+            if (before.z() >= heightDifference && p.z() <= heightDifference &&
+                v.z() <= 0 && before.z() != p.z()) {
+                const double t = (heightDifference - before.z()) / (p.z() - before.z());
+                farthest = std::max(farthest, before.x() + (p.x() - before.x()) * t);
+                break;
+            }
+            if (v.x() <= 0) break;
+        }
+    }
+    result.status = horizontalRange > farthest + 1.0
+        ? FireControlStatus::OutOfRange : FireControlStatus::NoSolution;
+    return result;
 }

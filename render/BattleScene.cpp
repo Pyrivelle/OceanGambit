@@ -73,14 +73,18 @@ struct BattleScene::Impl {
         horizontal = osg::Matrix::transform3x3(horizontal,
             osg::Matrix::rotate(cue.yawOffset, 0, 0, 1));
         const auto gun = gunSettings_.at(cue.from);
-        const auto solution = projectiles_.solveElevation(
+        const auto solution = projectiles_.fireControlSolution(
             range, targetPoint.z() - initial.position.z(),
             gun.arc, gun.minElevationRad(), gun.maxElevationRad());
-        if (!solution) {
-            std::cerr << "No firing solution at range=" << range << '\n';
+        if (!solution.elevation) {
+            std::cerr << "Fire control AI: " << fireControlStatusName(solution.status)
+                      << " ship=" << cue.from + 1 << " range=" << range << '\n';
             return;
         }
-        const double elevation = *solution;
+        if (solution.status == FireControlStatus::FallbackLow)
+            std::cout << "Fire control AI: high arc unavailable, using low arc ship="
+                      << cue.from + 1 << " range=" << range << '\n';
+        const double elevation = *solution.elevation;
         const osg::Vec3d aimPoint = initial.position + horizontal * range +
             osg::Vec3d(0, 0, std::tan(elevation) * range);
         const auto muzzle = ships_.ship(cue.from).poseTurret(aimPoint);
@@ -96,6 +100,8 @@ struct BattleScene::Impl {
         const auto gun = gunSettings_.at(source);
         MuzzlePose muzzle = ship.poseTurret(target);
         double elevation = 0;
+        FireControlStatus status = FireControlStatus::Ready;
+        FireArc chosenArc = gun.arc;
         for (int i = 0; i < 5; ++i) {
             osg::Vec3d horizontal = target - muzzle.position;
             horizontal.z() = 0;
@@ -104,15 +110,19 @@ struct BattleScene::Impl {
                 std::cerr << "Fire control: target is too close to muzzle\n";
                 return;
             }
-            const auto solution = projectiles_.solveElevation(
+            const auto solution = projectiles_.fireControlSolution(
                 range, target.z() - muzzle.position.z(),
                 gun.arc, gun.minElevationRad(), gun.maxElevationRad());
-            if (!solution) {
-                std::cerr << "Fire control: no ballistic solution, range="
-                          << range << " height=" << target.z() - muzzle.position.z() << '\n';
+            if (!solution.elevation) {
+                std::cerr << "Fire control: " << fireControlStatusName(solution.status)
+                          << " ship=" << source + 1
+                          << " range=" << range
+                          << " height=" << target.z() - muzzle.position.z() << '\n';
                 return;
             }
-            elevation = *solution;
+            elevation = *solution.elevation;
+            status = solution.status;
+            chosenArc = solution.selectedArc;
             horizontal /= range;
             const osg::Vec3d direction =
                 horizontal * std::cos(elevation) + osg::Vec3d(0, 0, std::sin(elevation));
@@ -122,7 +132,8 @@ struct BattleScene::Impl {
             if (delta < 1e-5) break;
         }
         std::cout << "fire_control ship=" << source + 1
-                  << " arc=" << (gun.arc == FireArc::High ? "high" : "low")
+                  << " arc=" << (chosenArc == FireArc::High ? "high" : "low")
+                  << " status=" << fireControlStatusName(status)
                   << " elevation_deg=" << elevation * (180.0 / 3.14159265358979323846)
                   << " target=(" << target.x() << ',' << target.y() << ',' << target.z()
                   << ") muzzle=(" << muzzle.position.x() << ','
