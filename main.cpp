@@ -26,7 +26,9 @@ int main(int argc, char** argv) {
         return runBattleView(args.contains("--moving"),
                              args.contains("--check") || args.contains("--window-check"),
                              args.contains("--drag-quadratic") && !wows, wows, method,
-                             args.contains("--overview"), args.contains("--check-camera"));
+                             args.contains("--overview"), args.contains("--check-camera"),
+                             args.contains("--follow"), !args.contains("--no-edge-scroll"),
+                             args.contains("--check-rts-camera"));
     } catch (const std::exception& e) {
         std::cerr << e.what() << std::endl;
         return 1;

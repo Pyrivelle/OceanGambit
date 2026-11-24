@@ -280,6 +280,11 @@ BattleScene::BattleScene(osgViewer::Viewer& viewer, bool moving, bool quadratic,
 BattleScene::~BattleScene() = default;
 osg::Group& BattleScene::root() const { return *impl_->root_; }
 void BattleScene::advance(double now) { impl_->advance(now); }
+void BattleScene::setPlayerControlEnabled(bool enabled) {
+    impl_->playerControlled_ = enabled;
+    if (!enabled) impl_->playerRequests_.clear();
+}
+
 void BattleScene::setControlledShip(ShipID ship) {
     if (impl_->playerControlled_ && ship < impl_->ships_.count())
         impl_->controlledShip_ = ship;

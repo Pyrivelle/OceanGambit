@@ -1,6 +1,7 @@
 #include "BattleView.h"
 #include "ShipCameraSettings.h"
 #include "../render/BattleScene.h"
+#include "../render/RTSCameraController.h"
 
 #include <QApplication>
 #include <QCursor>
@@ -14,22 +15,37 @@
 #include <QOpenGLFunctions>
 #include <QOpenGLWidget>
 #include <QTimer>
+#include <QWheelEvent>
 #include <osgViewer/Viewer>
 
 #include <cmath>
 #include <iostream>
 
+bool verifyRTSCamera();
+
 namespace {
+enum class CameraMode { RTS, Follow, Overview };
+
+RTSCameraConfig rtsConfig(bool edgeScroll) {
+    RTSCameraConfig config;
+    config.edgeScroll = edgeScroll;
+    return config;
+}
+
 class BattleView : public QOpenGLWidget {
 public:
     BattleView(bool moving, bool check, bool quadratic, bool wows,
-               ocean_gambit::ballistics::Integrator integrator, bool overview, bool cameraCheck)
-        : moving_(moving), check_(check && !cameraCheck), overview_((overview || check) && !cameraCheck),
-          cameraCheck_(cameraCheck),
-          scene_(viewer_, moving, quadratic, wows, integrator, !overview_) {
+               ocean_gambit::ballistics::Integrator integrator, bool overview, bool cameraCheck,
+               bool follow, bool edgeScroll, bool rtsCheck)
+        : moving_(moving), check_(check && !cameraCheck && !rtsCheck),
+          cameraCheck_(cameraCheck && !rtsCheck), rtsCheck_(rtsCheck),
+          mode_(rtsCheck ? CameraMode::RTS : (cameraCheck ? CameraMode::Follow :
+                ((overview || check) ? CameraMode::Overview : follow ? CameraMode::Follow : CameraMode::RTS))),
+          rts_(rtsConfig(edgeScroll)),
+          scene_(viewer_, moving, quadratic, wows, integrator, followMode()) {
         viewer_.setThreadingModel(osgViewer::Viewer::SingleThreaded);
         setWindowTitle("OceanGambit | 020528 x2 | Triton");
-        if (!overview_) {
+        if (mode_ != CameraMode::Overview) {
             cameraSettings_ = loadShipCameraSettings(scene_.shipModelPath(0).value(), scene_.shipBridgeEye(0));
             shipCamera_.follow(0, cameraSettings_);
             setFocusPolicy(Qt::StrongFocus);
@@ -39,6 +55,7 @@ public:
             reticle_->setAlignment(Qt::AlignCenter);
             reticle_->setAttribute(Qt::WA_TransparentForMouseEvents);
             reticle_->setStyleSheet("color: white; background: transparent; font: bold 19px;");
+            reticle_->setVisible(followMode());
         }
         resize(1200, 740);
         QObject::connect(&timer_, &QTimer::timeout, this, [this] { update(); });
@@ -54,12 +71,37 @@ public:
     }
 
 private:
+    bool followMode() const { return mode_ == CameraMode::Follow; }
+    bool rtsMode() const { return mode_ == CameraMode::RTS; }
+
+    osg::Vec2d ndc(const QPointF& point) const {
+        return {2 * point.x() / width() - 1, 1 - 2 * point.y() / height()};
+    }
+
+    double aspectRatio() const { return double(width()) / height(); }
+
+    void toggleInteractiveMode() {
+        if (followMode()) {
+            altLooking_ = false;
+            setBinocular(false);
+            mode_ = CameraMode::RTS;
+        } else {
+            rtsDragButton_ = Qt::NoButton;
+            rts_.stopZoom();
+            mode_ = CameraMode::Follow;
+            shipCamera_.follow(shipCamera_.followedShip(), cameraSettings_);
+        }
+        reticle_->setVisible(followMode());
+        scene_.setPlayerControlEnabled(followMode());
+        if (followMode()) scene_.setControlledShip(shipCamera_.followedShip());
+    }
+
     bool looking() const {
         return shipCamera_.binocular() || altLooking_ || temporaryLook_;
     }
 
     void centerPointer() {
-        if (!cameraCheck_) QCursor::setPos(mapToGlobal(rect().center()));
+        if (!cameraCheck_ && !rtsCheck_) QCursor::setPos(mapToGlobal(rect().center()));
     }
 
     void updatePointer() {
@@ -84,12 +126,22 @@ private:
     }
 
     void keyPressEvent(QKeyEvent* event) override {
-        if (!overview_ && event->key() == Qt::Key_Shift) {
+        if (mode_ != CameraMode::Overview && event->key() == Qt::Key_F6) {
+            if (!event->isAutoRepeat()) toggleInteractiveMode();
+            event->accept();
+            return;
+        }
+        if (rtsMode() && event->key() == Qt::Key_Home) {
+            rts_.home();
+            event->accept();
+            return;
+        }
+        if (followMode() && event->key() == Qt::Key_Shift) {
             if (!event->isAutoRepeat()) setBinocular(!shipCamera_.binocular());
             event->accept();
             return;
         }
-        if (!overview_ && event->key() == Qt::Key_Alt) {
+        if (followMode() && event->key() == Qt::Key_Alt) {
             if (!event->isAutoRepeat()) {
                 altLooking_ = true;
                 updatePointer();
@@ -97,7 +149,7 @@ private:
             event->accept();
             return;
         }
-        if (!overview_ && event->key() >= Qt::Key_1 && event->key() <= Qt::Key_2) {
+        if (followMode() && event->key() >= Qt::Key_1 && event->key() <= Qt::Key_2) {
             const ShipID id = static_cast<ShipID>(event->key() - Qt::Key_1);
             if (id != shipCamera_.followedShip()) {
                 if (const auto model = scene_.shipModelPath(id)) {
@@ -115,7 +167,7 @@ private:
     }
 
     void keyReleaseEvent(QKeyEvent* event) override {
-        if (!overview_ && event->key() == Qt::Key_Alt) {
+        if (followMode() && event->key() == Qt::Key_Alt) {
             if (!event->isAutoRepeat()) {
                 altLooking_ = false;
                 updatePointer();
@@ -123,7 +175,7 @@ private:
             event->accept();
             return;
         }
-        if (!overview_ && event->key() == Qt::Key_Shift) {
+        if (followMode() && event->key() == Qt::Key_Shift) {
             event->accept();
             return;
         }
@@ -132,11 +184,15 @@ private:
 
     void focusInEvent(QFocusEvent* event) override {
         QOpenGLWidget::focusInEvent(event);
-        if (!overview_ && looking()) updatePointer();
+        if (followMode() && looking()) updatePointer();
     }
 
     void focusOutEvent(QFocusEvent* event) override {
-        if (!overview_) {
+        if (rtsMode()) {
+            rtsDragButton_ = Qt::NoButton;
+            rts_.stopZoom();
+        }
+        if (followMode()) {
             altLooking_ = false;
             stopTemporaryLook();
             unsetCursor();
@@ -145,13 +201,22 @@ private:
     }
 
     void mousePressEvent(QMouseEvent* event) override {
-        if (!overview_ && event->button() == Qt::RightButton) {
+        if (rtsMode() && rtsDragButton_ == Qt::NoButton &&
+            (event->button() == Qt::MiddleButton ||
+             (event->button() == Qt::LeftButton && event->modifiers().testFlag(Qt::AltModifier)))) {
+            rtsDragButton_ = event->button();
+            rtsPrevious_ = event->localPos();
+            rts_.stopZoom();
+            event->accept();
+            return;
+        }
+        if (followMode() && event->button() == Qt::RightButton) {
             temporaryLook_ = true;
             shipCamera_.beginTemporaryLook();
             updatePointer();
             return;
         }
-        if (!overview_ && event->button() == Qt::LeftButton) {
+        if (followMode() && event->button() == Qt::LeftButton) {
             const ShipID shooter = shipCamera_.followedShip();
             if (const auto pose = scene_.shipTransform(shooter)) {
                 // During temporary right-button looking, fire along the
@@ -169,7 +234,12 @@ private:
     }
 
     void mouseReleaseEvent(QMouseEvent* event) override {
-        if (!overview_ && event->button() == Qt::RightButton) {
+        if (rtsMode() && event->button() == rtsDragButton_) {
+            rtsDragButton_ = Qt::NoButton;
+            event->accept();
+            return;
+        }
+        if (followMode() && event->button() == Qt::RightButton) {
             stopTemporaryLook();
             updatePointer();
             return;
@@ -178,7 +248,20 @@ private:
     }
 
     void mouseMoveEvent(QMouseEvent* event) override {
-        if (!overview_ && looking() && (hasFocus() || cameraCheck_)) {
+        if (rtsMode() && rtsDragButton_ != Qt::NoButton && event->buttons().testFlag(rtsDragButton_) &&
+            width() > 0 && height() > 0) {
+            const auto point = event->localPos();
+            if (rtsDragButton_ == Qt::LeftButton) {
+                const auto delta = point - rtsPrevious_;
+                rts_.rotate(delta.x(), delta.y());
+            } else {
+                rts_.pan(ndc(rtsPrevious_), ndc(point), aspectRatio());
+            }
+            rtsPrevious_ = point;
+            event->accept();
+            return;
+        }
+        if (followMode() && looking() && (hasFocus() || cameraCheck_)) {
             const auto delta = event->pos() - rect().center();
             if (!delta.isNull()) {
                 shipCamera_.look(delta.x(), delta.y());
@@ -189,9 +272,72 @@ private:
         QOpenGLWidget::mouseMoveEvent(event);
     }
 
+    void wheelEvent(QWheelEvent* event) override {
+        if (rtsMode() && rtsDragButton_ == Qt::NoButton && width() > 0 && height() > 0) {
+            const double notches = event->angleDelta().y() != 0 ?
+                event->angleDelta().y() / 120.0 : event->pixelDelta().y() / 40.0;
+            if (notches != 0) {
+                rts_.zoom(notches, ndc(event->position()), aspectRatio());
+                event->accept();
+                return;
+            }
+        }
+        QOpenGLWidget::wheelEvent(event);
+    }
+
     void resizeEvent(QResizeEvent* event) override {
         QOpenGLWidget::resizeEvent(event);
         if (reticle_) reticle_->move(width() / 2 - 12, height() / 2 - 12);
+    }
+
+    void updateRTSCamera(double now, double aspect) {
+        const double dt = now - rtsFrameTime_;
+        rtsFrameTime_ = now;
+        rts_.advance(dt, aspect);
+        if (rtsDragButton_ == Qt::NoButton && !rtsCheck_ && isActiveWindow() && hasFocus()) {
+            const auto pointer = mapFromGlobal(QCursor::pos());
+            rts_.scrollAtEdge({double(pointer.x()), double(pointer.y())},
+                              {double(width()), double(height())}, dt);
+        }
+        auto& camera = *viewer_.getCamera();
+        camera.setViewMatrix(rts_.viewMatrix());
+        camera.setProjectionMatrix(rts_.projectionMatrix(aspect));
+    }
+
+    bool verifyRTSHost() {
+        const auto center = rect().center();
+        QMouseEvent press(QEvent::MouseButtonPress, QPointF(center),
+                          Qt::MiddleButton, Qt::MiddleButton, Qt::NoModifier);
+        QMouseEvent move(QEvent::MouseMove, QPointF(center + QPoint(70, 40)),
+                         Qt::NoButton, Qt::MiddleButton, Qt::NoModifier);
+        QMouseEvent release(QEvent::MouseButtonRelease, QPointF(center),
+                            Qt::MiddleButton, Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(this, &press);
+        QApplication::sendEvent(this, &move);
+        QApplication::sendEvent(this, &release);
+        const auto panned = rts_.state();
+        QMouseEvent altPress(QEvent::MouseButtonPress, QPointF(center),
+                             Qt::LeftButton, Qt::LeftButton, Qt::AltModifier);
+        QMouseEvent altMove(QEvent::MouseMove, QPointF(center + QPoint(30, -20)),
+                            Qt::NoButton, Qt::LeftButton, Qt::AltModifier);
+        QMouseEvent altRelease(QEvent::MouseButtonRelease, QPointF(center),
+                               Qt::LeftButton, Qt::NoButton, Qt::AltModifier);
+        QApplication::sendEvent(this, &altPress);
+        QApplication::sendEvent(this, &altMove);
+        QApplication::sendEvent(this, &altRelease);
+        const auto saved = rts_.state();
+        const bool altRotate = saved.heading != panned.heading && saved.pitch != panned.pitch &&
+            saved.target == panned.target && saved.distance == panned.distance;
+        QKeyEvent toggle(QEvent::KeyPress, Qt::Key_F6, Qt::NoModifier);
+        QApplication::sendEvent(this, &toggle);
+        const bool entered = followMode() && reticle_->isVisible();
+        QApplication::sendEvent(this, &toggle);
+        const auto restored = rts_.state();
+        const bool restoredState = rtsMode() && reticle_->isHidden() && saved.target.length() > 1 &&
+            saved.target == restored.target && saved.distance == restored.distance &&
+            saved.heading == restored.heading && saved.pitch == restored.pitch;
+        std::cout << "follow_mode=" << entered << " rts_restore=" << restoredState << " alt_rotate=" << altRotate << std::endl;
+        return entered && restoredState && altRotate;
     }
 
     void updateCamera(double now, double aspect) {
@@ -343,14 +489,30 @@ private:
         GLint vao = 0;
         gl->glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vao);
         window_->getState()->setCurrentVertexArrayObject(static_cast<GLuint>(vao));
-        const double now = (check_ || cameraCheck_) ? frame_ / 30.0 : clock_.elapsed() / 1000.0;
+        const double now = (check_ || cameraCheck_ || rtsCheck_) ? frame_ / 30.0 : clock_.elapsed() / 1000.0;
         viewer_.advance(now);
         scene_.advance(now);
         const double aspect = double(w) / h;
-        if (!overview_) updateCamera(now, aspect);
+        if (rtsMode()) updateRTSCamera(now, aspect);
+        else {
+            rtsFrameTime_ = now;
+            if (followMode()) updateCamera(now, aspect);
+        }
         viewer_.eventTraversal();
         viewer_.updateTraversal();
         viewer_.renderingTraversals();
+
+        if (rtsCheck_) {
+            if (frame_++ == 2) {
+                capture("camera-rts.png");
+                const bool math = verifyRTSCamera();
+                const bool host = verifyRTSHost();
+                const bool ok = math && host && scene_.oceanReady();
+                std::cout << "rts_camera_result=" << (ok ? "PASS" : "FAIL") << std::endl;
+                QTimer::singleShot(0, this, [ok] { QApplication::exit(ok ? 0 : 1); });
+            }
+            return;
+        }
 
         if (cameraCheck_) {
             if (frame_ == 0) {
@@ -434,8 +596,13 @@ private:
 
     bool moving_;
     bool check_;
-    bool overview_;
     bool cameraCheck_;
+    bool rtsCheck_;
+    CameraMode mode_;
+    RTSCameraController rts_;
+    Qt::MouseButton rtsDragButton_ = Qt::NoButton;
+    QPointF rtsPrevious_;
+    double rtsFrameTime_ = 0;
     bool cameraCheckPassed_ = false;
     osg::Vec3d cameraProbeOrigin_;
     ShipCameraController shipCamera_;
@@ -460,8 +627,10 @@ private:
 }
 
 int runBattleView(bool moving, bool check, bool quadratic, bool wows,
-                  ocean_gambit::ballistics::Integrator integrator, bool overview, bool cameraCheck) {
-    BattleView view(moving, check, quadratic, wows, integrator, overview, cameraCheck);
+                  ocean_gambit::ballistics::Integrator integrator, bool overview, bool cameraCheck,
+                  bool follow, bool edgeScroll, bool rtsCheck) {
+    BattleView view(moving, check, quadratic, wows, integrator, overview, cameraCheck,
+                    follow, edgeScroll, rtsCheck);
     view.show();
     return QApplication::exec();
 }
