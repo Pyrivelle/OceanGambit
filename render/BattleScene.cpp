@@ -50,12 +50,10 @@ struct BattleScene::Impl {
                     effects_.contact(id, hit, contactTime);
                 });
             if (const auto cue = scenario_.nextShot(time)) {
-                if (!playerControlled_ || cue->from != 0) launch(*cue, time);
+                if (!playerControlled_ || cue->from != controlledShip_) launch(*cue, time);
             }
-            for (const auto& direction : playerRequests_) {
-                const auto muzzle = ships_.ship(0).poseTurretDirection(direction);
-                spawn(0, muzzle, time);
-            }
+            for (const auto& request : playerRequests_)
+                launchPlayer(request.ship, request.target, time);
             playerRequests_.clear();
         }
         effects_.advance(now);
@@ -84,6 +82,46 @@ struct BattleScene::Impl {
             osg::Vec3d(0, 0, std::tan(elevation) * range);
         const auto muzzle = ships_.ship(cue.from).poseTurret(aimPoint);
         spawn(cue.from, muzzle, time);
+    }
+
+    // Aim from the physical muzzle, not from the camera's bridge/eye point.
+    // Barrel rotation can move the muzzle, so iteratively re-evaluate its
+    // world origin before solving the low-arc launch elevation.
+    void launchPlayer(ShipID source, const osg::Vec3d& target, double time) {
+        if (source >= ships_.count()) return;
+        auto& ship = ships_.ship(source);
+        MuzzlePose muzzle = ship.poseTurret(target);
+        double elevation = 0;
+        for (int i = 0; i < 5; ++i) {
+            osg::Vec3d horizontal = target - muzzle.position;
+            horizontal.z() = 0;
+            const double range = horizontal.length();
+            if (range < 1e-3) {
+                std::cerr << "Fire control: target is too close to muzzle\n";
+                return;
+            }
+            const auto solution = projectiles_.solveElevation(
+                range, target.z() - muzzle.position.z());
+            if (!solution) {
+                std::cerr << "Fire control: no ballistic solution, range="
+                          << range << " height=" << target.z() - muzzle.position.z() << '\n';
+                return;
+            }
+            elevation = *solution;
+            horizontal /= range;
+            const osg::Vec3d direction =
+                horizontal * std::cos(elevation) + osg::Vec3d(0, 0, std::sin(elevation));
+            const auto next = ship.poseTurretDirection(direction);
+            const double delta = (next.position - muzzle.position).length();
+            muzzle = next;
+            if (delta < 1e-5) break;
+        }
+        std::cout << "fire_control ship=" << source + 1
+                  << " elevation_deg=" << elevation * (180.0 / 3.14159265358979323846)
+                  << " target=(" << target.x() << ',' << target.y() << ',' << target.z()
+                  << ") muzzle=(" << muzzle.position.x() << ','
+                  << muzzle.position.y() << ',' << muzzle.position.z() << ")\n";
+        spawn(source, muzzle, time);
     }
 
     void spawn(ShipID source, const MuzzlePose& muzzle, double time) {
@@ -151,10 +189,12 @@ struct BattleScene::Impl {
     NavalEffects effects_;
     ProjectileSystem projectiles_;
     bool playerControlled_;
+    ShipID controlledShip_ = 0;
+    struct PlayerShot { ShipID ship; osg::Vec3d target; };
     unsigned tick_ = 0;
     unsigned projectileId_ = 0;
     std::array<unsigned, 2> launchCounts_{};
-    std::vector<osg::Vec3d> playerRequests_;
+    std::vector<PlayerShot> playerRequests_;
 };
 
 BattleScene::BattleScene(osgViewer::Viewer& viewer, bool moving, bool quadratic,
@@ -163,9 +203,16 @@ BattleScene::BattleScene(osgViewer::Viewer& viewer, bool moving, bool quadratic,
 BattleScene::~BattleScene() = default;
 osg::Group& BattleScene::root() const { return *impl_->root_; }
 void BattleScene::advance(double now) { impl_->advance(now); }
-void BattleScene::requestPlayerShot(const osg::Vec3d& viewDirection) {
-    if (impl_->playerControlled_ && viewDirection.length2() > 0)
-        impl_->playerRequests_.push_back(viewDirection);
+void BattleScene::setControlledShip(ShipID ship) {
+    if (impl_->playerControlled_ && ship < impl_->ships_.count())
+        impl_->controlledShip_ = ship;
+}
+
+void BattleScene::requestPlayerShot(ShipID ship, const osg::Vec3d& target) {
+    if (impl_->playerControlled_ && ship == impl_->controlledShip_ &&
+        ship < impl_->ships_.count() &&
+        std::isfinite(target.x()) && std::isfinite(target.y()) && std::isfinite(target.z()))
+        impl_->playerRequests_.push_back({ship, target});
 }
 bool BattleScene::oceanReady() const { return impl_->ocean_->isInitialized(); }
 SceneStatus BattleScene::status() const { return impl_->status(); }

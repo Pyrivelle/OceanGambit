@@ -105,6 +105,7 @@ private:
                     setBinocular(false);
                     cameraSettings_ = loadShipCameraSettings(*model);
                     shipCamera_.follow(id, cameraSettings_);
+                    scene_.setControlledShip(id);
                     setBinocular(binocular);
                 }
             }
@@ -151,8 +152,17 @@ private:
             return;
         }
         if (!overview_ && event->button() == Qt::LeftButton) {
-            if (const auto pose = scene_.shipTransform(shipCamera_.followedShip()))
-                scene_.requestPlayerShot(shipCamera_.committedDirection(*pose));
+            const ShipID shooter = shipCamera_.followedShip();
+            if (const auto pose = scene_.shipTransform(shooter)) {
+                // During temporary right-button looking, fire along the
+                // committed aim, not along the temporary free-look direction.
+                const CameraRay ray{shipCamera_.centerRay().origin,
+                                    shipCamera_.committedDirection(*pose)};
+                if (const auto target = scene_.pickTarget(ray, shooter))
+                    scene_.requestPlayerShot(shooter, target->point);
+                else
+                    std::cout << "fire_control: no target under reticle\\n";
+            }
             return;
         }
         QOpenGLWidget::mousePressEvent(event);

@@ -51,6 +51,41 @@ int main() {
     const double angle = ProjectileSystem(quadratic).aimElevation(1000.0, -6.0);
     const bool aim = std::isfinite(angle) && angle > -0.1 && angle < 0.35;
 
+    // The inverse elevation must agree with the live integrator when
+    // dispersion is disabled. Check height at the target range on descent.
+    const auto checkAim = [](AmmoConfig ammo, double distance, double height) {
+        ammo.spread = 0;
+        ammo.lifetime = 30;
+        ProjectileSystem system(ammo, 528);
+        const auto solution = system.solveElevation(distance, height);
+        if (!solution) return false;
+        const double angle = *solution;
+        system.launch(0, 0, {0, 0, 0},
+                      {std::cos(angle), 0, std::sin(angle)}, {});
+        osg::Vec3d last;
+        bool haveLast = false, reached = false;
+        double atRange = 0;
+        for (int i = 0; i < 3000 && !reached; ++i) {
+            system.step([](unsigned, const auto&, const auto&) { return std::nullopt; },
+                        [&](unsigned, const osg::Vec3d& pos) {
+                            if (haveLast && last.x() <= distance && pos.x() >= distance) {
+                                const double u = (distance - last.x()) / (pos.x() - last.x());
+                                atRange = last.z() + (pos.z() - last.z()) * u;
+                                reached = true;
+                            }
+                            last = pos;
+                            haveLast = true;
+                        }, [](unsigned, unsigned, const auto&) {});
+        }
+        return reached && std::abs(atRange - height) < 0.05;
+    };
+    auto legacyAim = AmmoConfig::exponentialDemo();
+    legacyAim.lifetime = 30;
+    const bool inverseLegacy = checkAim(legacyAim, 1000, -6);
+    auto wowsAim = AmmoConfig::wowsDemo();
+    const bool inverseWows = checkAim(wowsAim, 1000, -6);
+    const bool unreachable = !ProjectileSystem(wowsAim).solveElevation(1000000, 0).has_value();
+
     ProjectileSystem stopped;
     stopped.launch(1, 0, {}, {1, 0, 0}, {});
     int contacts = 0;
@@ -62,6 +97,9 @@ int main() {
     const bool singleContact = contacts == 1;
     std::cout << "arc=" << arc << " damping=" << damping << " replay=" << replay
               << " single_contact=" << singleContact << " quadratic=" << quadraticDrag
-              << " quadratic_replay=" << quadraticReplay << " aim=" << aim << '\n';
-    return arc && damping && replay && singleContact && quadraticDrag && quadraticReplay && aim ? 0 : 1;
+              << " quadratic_replay=" << quadraticReplay << " aim=" << aim
+              << " inverse_legacy=" << inverseLegacy
+              << " inverse_wows=" << inverseWows
+              << " unreachable=" << unreachable << '\n';
+    return arc && damping && replay && singleContact && quadraticDrag && quadraticReplay && aim && inverseLegacy && inverseWows && unreachable ? 0 : 1;
 }

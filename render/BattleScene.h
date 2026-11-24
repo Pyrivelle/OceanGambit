@@ -25,7 +25,8 @@ public:
     ~BattleScene();
     osg::Group& root() const;
     void advance(double now);
-    void requestPlayerShot(const osg::Vec3d& viewDirection);
+    void setControlledShip(ShipID ship);
+    void requestPlayerShot(ShipID ship, const osg::Vec3d& target);
     bool oceanReady() const;
     SceneStatus status() const;
     std::optional<std::string> shipModelPath(ShipID id) const;
