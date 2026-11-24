@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "ships": [
+    {
+      "code": "020528",
+      "model_file": "020528.dmuShip",
+      "dimensions_m": null,
+      "bridge_node": "ChuanLou",
+      "turrets": [
+        {
+          "id": "main_01",
+          "parent_node": "ChuanTi",
+          "yaw_node": "l202",
+          "pitch_node": "l203",
+          "yaw_pivot": [
+            0,
+            26.6,
+            9.4
+          ],
+          "pitch_pivot": [
+            0,
+            26.7,
+            10.7
+          ],
+          "muzzle_local": null,
+          "barrel_forward": [
+            0,
+            1,
+            0
+          ],
+          "yaw_axis": [
+            0,
+            0,
+            1
+          ],
+          "pitch_axis": [
+            1,
+            0,
+            0
+          ],
+          "yaw_sign": -1,
+          "pitch_sign": 1
+        }
+      ],
+      "views": [
+        {
+          "id": "bridge",
+          "eye": [
+            0,
+            18.059999465942383,
+            12.90999984741211
+          ]
+        }
+      ],
+      "extensions": {}
+    }
+  ]
+}
