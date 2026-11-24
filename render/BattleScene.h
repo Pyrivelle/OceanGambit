@@ -2,6 +2,7 @@
 
 #include <array>
 #include <memory>
+#include "../battle/WowsMotion.h"
 
 namespace osg { class Group; }
 namespace osgViewer { class Viewer; }
@@ -15,7 +16,8 @@ struct SceneStatus {
 
 class BattleScene {
 public:
-    BattleScene(osgViewer::Viewer& viewer, bool moving, bool quadratic = false);
+    BattleScene(osgViewer::Viewer& viewer, bool moving, bool quadratic = false, bool wows = false,
+                ocean_gambit::ballistics::Integrator integrator = ocean_gambit::ballistics::Integrator::RungeKutta4);
     ~BattleScene();
     osg::Group& root() const;
     void advance(double now);

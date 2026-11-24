@@ -15,7 +15,9 @@
 namespace {
 class BattleView : public QOpenGLWidget {
 public:
-    BattleView(bool moving, bool check, bool quadratic) : moving_(moving), check_(check), scene_(viewer_, moving, quadratic) {
+    BattleView(bool moving, bool check, bool quadratic, bool wows,
+               ocean_gambit::ballistics::Integrator integrator)
+        : moving_(moving), check_(check), scene_(viewer_, moving, quadratic, wows, integrator) {
         viewer_.setThreadingModel(osgViewer::Viewer::SingleThreaded);
         setWindowTitle("OceanGambit | 020528 x2 | Triton");
         resize(1200, 740);
@@ -134,8 +136,9 @@ private:
 };
 }
 
-int runBattleView(bool moving, bool check, bool quadratic) {
-    BattleView view(moving, check, quadratic);
+int runBattleView(bool moving, bool check, bool quadratic, bool wows,
+                  ocean_gambit::ballistics::Integrator integrator) {
+    BattleView view(moving, check, quadratic, wows, integrator);
     view.show();
     return QApplication::exec();
 }

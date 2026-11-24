@@ -65,4 +65,8 @@ if(BUILD_TESTING)
         target_compile_options(WowsShellCheck PRIVATE /utf-8)
     endif()
     add_test(NAME WowsShellCheck COMMAND WowsShellCheck)
+
+    add_executable(WowsMotionCheck tests/WowsMotionCheck.cpp)
+    target_compile_features(WowsMotionCheck PRIVATE cxx_std_17)
+    add_test(NAME WowsMotionCheck COMMAND WowsMotionCheck)
 endif()

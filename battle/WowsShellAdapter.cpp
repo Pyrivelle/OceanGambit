@@ -50,7 +50,21 @@ std::vector<WowsShellSample> sampleWowsShell(
     parameters.ricochet0 = 0;
     parameters.ricochet1 = 0;
     parameters.nonAP = 0;
-    wows_shell::shell projectile(parameters, "OceanGambit reference");
+    // The upstream 2-argument constructor preprocesses dispersion fields
+    // before initializing them. Supply well-formed values even when only
+    // trajectory/impact are requested.
+    wows_shell::dispersionParams dispersion{};
+    dispersion.idealRadius = 1.0;
+    dispersion.minRadius = 1.0;
+    dispersion.idealDistance = 1000.0;
+    dispersion.taperDistance = 1000.0;
+    dispersion.delim = 0.5;
+    dispersion.zeroRadius = 1.0;
+    dispersion.delimRadius = 1.0;
+    dispersion.maxRadius = 1.0;
+    dispersion.maxDistance = 30000.0;
+    dispersion.sigma = 2.0;
+    wows_shell::shell projectile(parameters, dispersion, "OceanGambit reference");
     wows_shell::shellCalc calculator(1);
     calculator.set_min(minAngleDeg);
     calculator.set_max(maxAngleDeg);

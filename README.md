@@ -71,3 +71,21 @@ ctest --test-dir build -C Release --output-on-failure
 cmake --build build --config Release --target WowsShellCheck
 ctest --test-dir build -C Release --output-on-failure -R WowsShellCheck
 ```
+
+## 实时 WoWS 风格弹道（实验开关）
+
+`--ballistics-wows` **实际切换实时弹丸运动** 到从 `wows_shell` 源码移植的三维逐步大气阻力计算。海面与舰体的线段碰撞仍每 0.01 秒进行一次。注意：第三方 `wows_shell` 原始 API 是批量射角模拟器，无法对每颗运动弹丸增量推进；因此 `battle/WowsMotion.h` 移植了它的 ISA 气压/密度和固定 Cd 二次阻力微分方程，同时将数值积分器用于 3D 运动。它是独立端口，不是直接调用 `shellCalc::calculateImpact` 来推进弹丸；该库依然用于批量基准计算。
+
+```powershell
+.\OpenOceanGambit.cmd --ballistics-wows
+.\OpenOceanGambit.cmd --ballistics-wows --integrator-euler
+.\OpenOceanGambit.cmd --ballistics-wows --integrator-rk2
+.\OpenOceanGambit.cmd --ballistics-wows --integrator-ab5
+.\OpenOceanGambit.cmd --check --moving --ballistics-wows
+cmake --build build --config Release --target WowsMotionCheck
+ctest --test-dir build -C Release --output-on-failure
+```
+
+默认仍是旧指数阻尼演示模型，以防破坏历史演示和回归验收；`--drag-quadratic` 仍保持原效果。WoWS 模式默认 RK4，其他积分器可切换。该模式使用海平面标准大气、固定阻力系数、真实秒数与米单位。演示弹药参数（152.4 mm、45 kg、670 m/s、Cd=0.3）仅供测试，并非真实舰炮数据。弹道射角反解复用实时推进器，范围搜索失败时跳过发射，不假设任何距离都可达；射角仍是给静止目标的低弧解。
+
+WoWS 风格散布使用截断正态采样（`sigma=2.0`，可重放种子），目前仍是在发射方向上的角度扰动，**不等于完整的 WoWS 散布椭圆/距离分布**。第三方穿深和引信算法继续保留，尚未接入实际结算；没有装备装甲带模型时沿用现有碰撞特效。暂未实现交互式鼠标指定落点、AI 目标提前量、滚转补偿或预计算射角表。

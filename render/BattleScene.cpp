@@ -22,9 +22,14 @@ void logProjectile(double time, unsigned id, unsigned source, const char* event,
 }
 
 struct BattleScene::Impl {
-    Impl(osgViewer::Viewer& viewer, bool moving, bool quadratic)
+    Impl(osgViewer::Viewer& viewer, bool moving, bool quadratic, bool wows, ocean_gambit::ballistics::Integrator integrator)
         : viewer_(viewer), ships_(*root_), scenario_(moving), effects_(viewer, *root_, ships_),
-          projectiles_(quadratic ? AmmoConfig::quadraticDemo() : AmmoConfig::exponentialDemo()) {
+          projectiles_([&] {
+              auto ammo = wows ? AmmoConfig::wowsDemo() :
+                          quadratic ? AmmoConfig::quadraticDemo() : AmmoConfig::exponentialDemo();
+              if (wows) ammo.integrator = integrator;
+              return ammo;
+          }()) {
         loadSky(*viewer_.getCamera());
         ocean_ = loadOcean(*root_);
         loadShipManager();
@@ -60,8 +65,13 @@ struct BattleScene::Impl {
         if (range > 0) horizontal /= range;
         horizontal = osg::Matrix::transform3x3(horizontal,
             osg::Matrix::rotate(cue.yawOffset, 0, 0, 1));
-        const double elevation = projectiles_.aimElevation(
+        const auto solution = projectiles_.solveElevation(
             range, targetPoint.z() - initial.position.z());
+        if (!solution) {
+            std::cerr << "No firing solution at range=" << range << '\n';
+            return;
+        }
+        const double elevation = *solution;
         const osg::Vec3d aimPoint = initial.position + horizontal * range +
             osg::Vec3d(0, 0, std::tan(elevation) * range);
         const auto muzzle = ships_.ship(cue.from).poseTurret(aimPoint);
@@ -129,8 +139,9 @@ struct BattleScene::Impl {
     unsigned tick_ = 0;
 };
 
-BattleScene::BattleScene(osgViewer::Viewer& viewer, bool moving, bool quadratic)
-    : impl_(std::make_unique<Impl>(viewer, moving, quadratic)) {}
+BattleScene::BattleScene(osgViewer::Viewer& viewer, bool moving, bool quadratic,
+                         bool wows, ocean_gambit::ballistics::Integrator integrator)
+    : impl_(std::make_unique<Impl>(viewer, moving, quadratic, wows, integrator)) {}
 BattleScene::~BattleScene() = default;
 osg::Group& BattleScene::root() const { return *impl_->root_; }
 void BattleScene::advance(double now) { impl_->advance(now); }

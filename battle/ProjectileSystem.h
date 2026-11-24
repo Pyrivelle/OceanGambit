@@ -1,6 +1,7 @@
 #pragma once
 
 #include <osg/Vec3d>
+#include "WowsMotion.h"
 
 #include <functional>
 #include <optional>
@@ -8,7 +9,7 @@
 #include <vector>
 
 // These parameters describe a projectile/ammunition type, not a global battle rule.
-enum class DragMode { Exponential, Quadratic };
+enum class DragMode { Exponential, Quadratic, WowsShell };
 
 struct AmmoConfig {
     double launchPace = 670.0;   // m/s
@@ -18,8 +19,22 @@ struct AmmoConfig {
     double spread = 0.0006;      // radian standard deviation, both axes
     double lifetime = 8.0;       // seconds
     DragMode dragMode = DragMode::Exponential;
+    double caliberMeters = 0.1524;
+    double massKg = 45.0;
+    double dragCoefficient = 0.3;
+    double sigma = 2.0; // truncated-normal bound (WoWS-inspired)
+    double verticalSpreadRatio = 1.0;
+    ocean_gambit::ballistics::Integrator integrator = ocean_gambit::ballistics::Integrator::RungeKutta4;
 
     static AmmoConfig exponentialDemo() { return {}; }
+    static AmmoConfig wowsDemo() {
+        AmmoConfig ammo;
+        ammo.dragMode = DragMode::WowsShell;
+        ammo.downPull = 9.8;
+        ammo.spread = 0.0012; // angular maximum, sigma=2 gives similar central width
+        ammo.lifetime = 30.0;
+        return ammo;
+    }
     static AmmoConfig quadraticDemo() {
         AmmoConfig ammo;
         ammo.dragMode = DragMode::Quadratic;
@@ -55,6 +70,7 @@ public:
     // Estimate a low-arc elevation using the same integrator as the live projectile.
     // Target is stationary; no ship motion, dispersion or fire-control lead.
     double aimElevation(double horizontalRange, double heightDifference) const;
+    std::optional<double> solveElevation(double horizontalRange, double heightDifference) const;
     const AmmoConfig& ammo() const { return ammo_; }
     static constexpr double interval = .01;
 
@@ -63,9 +79,11 @@ private:
         unsigned id, shooter;
         osg::Vec3d position, velocity;
         double age = 0;
+        ocean_gambit::ballistics::MotionHistory history;
     };
 
-    void integrate(osg::Vec3d& position, osg::Vec3d& velocity) const;
+    void integrate(osg::Vec3d& position, osg::Vec3d& velocity,
+                   ocean_gambit::ballistics::MotionHistory& history) const;
     AmmoConfig ammo_;
     std::mt19937 random_;
     std::normal_distribution<double> spread_;
