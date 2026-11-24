@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 project(OceanGambit LANGUAGES CXX)
 set(OSG_DIR "C:/CProj/third_party/osg-3.6.5-glcore/install" CACHE PATH "OSG SDK")
-set(NAVAL_PREVIEW "C:/CProj/perevia-osgkit/integrations/InfraredPreview" CACHE PATH "Naval preview sources")
 set(VEYLAXIS "C:/CProj/Veylaxis" CACHE PATH "Veylaxis sources and SDKs")
 set(OPENGL_HEADERS "C:/CProj/vcpkg/installed/x64-windows/include" CACHE PATH "Directory containing GL/glcorearb.h")
 set(TRITON_SDK "${VEYLAXIS}/third_party/Triton" CACHE PATH "Triton SDK")
@@ -21,14 +20,14 @@ add_executable(OceanGambit
     render/OceanLoader.cpp
     render/ShipManager.cpp
     render/SkyLoader.cpp
-    "${NAVAL_PREVIEW}/ShipDecals.cpp"
-    "${NAVAL_PREVIEW}/NavalEffectsPreview.cpp"
-    "${NAVAL_PREVIEW}/InfraredPreview.cpp"
-    "${VEYLAXIS}/src/osg/TritonOceanSurface.cpp")
+    "external/InfraredPreview/ShipDecals.cpp"
+    "external/InfraredPreview/NavalEffectsPreview.cpp"
+    "external/InfraredPreview/InfraredPreview.cpp"
+    "external/Veylaxis/src/osg/TritonOceanSurface.cpp")
 target_compile_features(OceanGambit PRIVATE cxx_std_17)
 target_compile_definitions(OceanGambit PRIVATE VEYLAXIS_GLCORE GLAPI=WINGDIAPI NOMINMAX WIN32_LEAN_AND_MEAN)
 target_include_directories(OceanGambit PRIVATE ${OPENSCENEGRAPH_INCLUDE_DIRS} "${OPENGL_HEADERS}"
-    "${NAVAL_PREVIEW}" "${VEYLAXIS}/include" "${TRITON_SDK}/Public Headers")
+    "${PROJECT_SOURCE_DIR}/external/InfraredPreview" "${PROJECT_SOURCE_DIR}/external/Veylaxis/include" "${TRITON_SDK}/Public Headers")
 target_link_libraries(OceanGambit PRIVATE ${OPENSCENEGRAPH_LIBRARIES} Qt5::Widgets OpenGL::GL
     "${TRITON_SDK}/lib/vc14/x64/Triton-MT-DLL.lib")
 target_compile_options(OceanGambit PRIVATE /utf-8)
