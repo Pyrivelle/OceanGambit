@@ -31,6 +31,7 @@ public:
     bool oceanReady() const;
     SceneStatus status() const;
     std::optional<std::string> shipModelPath(ShipID id) const;
+    std::optional<osg::Vec3d> shipBridgeEye(ShipID id) const;
     std::optional<osg::Matrixd> shipTransform(ShipID id) const;
     void setBridgeHidden(ShipID id, bool hidden);
     std::optional<CameraTarget> pickTarget(const CameraRay& ray, ShipID exclude) const;

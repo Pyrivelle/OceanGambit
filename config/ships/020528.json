@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "code": "020528",
+  "model": {
+    "file": "020528.dmuShip",
+    "dimensions_m": {
+      "length": 88.9000015258789,
+      "beam": 11.140000343322754,
+      "height": 25.200000762939453,
+      "draft": 4
+    }
+  },
+  "nodes": {
+    "hull": "ChuanTi",
+    "hull_path": "/n0/n0/n0",
+    "bridge": "ChuanLou",
+    "bridge_path": "/n0/n0/n1"
+  },
+  "turrets": [
+    {
+      "id": "main_01",
+      "yaw": {
+        "node": "l202",
+        "path": "/n0/n0/n0/n45",
+        "pivot": [
+          0,
+          26.6,
+          9.4
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ],
+        "sign": -1
+      },
+      "barrels": [
+        {
+          "id": "barrel_01",
+          "pitch": {
+            "node": "l203",
+            "path": "/n0/n0/n0/n44",
+            "pivot": [
+              0,
+              26.7,
+              10.7
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "sign": 1
+          },
+          "muzzle": [
+            8.940696716308594e-08,
+            30.882667541503906,
+            10.85041618347168
+          ],
+          "forward": [
+            0,
+            1,
+            0
+          ]
+        }
+      ]
+    }
+  ],
+  "views": [
+    {
+      "id": "bridge",
+      "eye": [
+        0,
+        18.059999465942383,
+        12.90999984741211
+      ],
+      "node": "BridgeView",
+      "path": "/n0/n1/n0/n3"
+    },
+    {
+      "id": "fore",
+      "eye": [
+        0,
+        39.23204040527344,
+        11.223087310791016
+      ],
+      "node": "ForeView",
+      "path": "/n0/n1/n0/n0"
+    },
+    {
+      "id": "fore_stbd",
+      "eye": [
+        0,
+        22.213464736938477,
+        12.363724708557129
+      ],
+      "node": "ForeStbdView",
+      "path": "/n0/n1/n0/n2"
+    },
+    {
+      "id": "aft_stbd",
+      "eye": [
+        5.150000095367432,
+        -28.16969108581543,
+        11.00220775604248
+      ],
+      "node": "AftStbdView",
+      "path": "/n0/n1/n0/n5"
+    },
+    {
+      "id": "aft",
+      "eye": [
+        0,
+        -42.453086853027344,
+        13.152079582214355
+      ],
+      "node": "AftView",
+      "path": "/n0/n1/n0/n6"
+    },
+    {
+      "id": "aft_port",
+      "eye": [
+        -5.150000095367432,
+        -28.16969108581543,
+        11.00220775604248
+      ],
+      "node": "AftPortView",
+      "path": "/n0/n1/n0/n4"
+    },
+    {
+      "id": "fore_port",
+      "eye": [
+        0,
+        30.0445499420166,
+        11.584942817687988
+      ],
+      "node": "ForePortView",
+      "path": "/n0/n1/n0/n1"
+    }
+  ],
+  "extensions": {
+    "model_sha256": "14a409ca2c13d875b3a37bca614e18a87d61490c8c26f6f9efb8d2f9dd131e26",
+    "rotation_review": "Both motions visible in the tested pose.",
+    "geometry_sources": {
+      "turrets.main_01.yaw": "visually_tested_mesh_estimate",
+      "turrets.main_01.pitch": "visually_tested_mesh_estimate",
+      "turrets.main_01.barrel_01.muzzle": "preview_barrel_bounds"
+    },
+    "pending_validation": {
+      "turrets.main_01.yaw.pivot/axis": "复用旧网格估算值，待校验全角度转动和间隙。",
+      "turrets.main_01.pitch.pivot/axis": "复用旧网格估算值，待校验全角度转动和间隙。",
+      "turrets.main_01.barrel_01.muzzle": "现有预览用炮管包围盒计算，待校验资产标记或实测位置。"
+    }
+  }
+}

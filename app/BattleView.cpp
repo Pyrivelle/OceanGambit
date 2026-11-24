@@ -30,7 +30,7 @@ public:
         viewer_.setThreadingModel(osgViewer::Viewer::SingleThreaded);
         setWindowTitle("OceanGambit | 020528 x2 | Triton");
         if (!overview_) {
-            cameraSettings_ = loadShipCameraSettings(scene_.shipModelPath(0).value());
+            cameraSettings_ = loadShipCameraSettings(scene_.shipModelPath(0).value(), scene_.shipBridgeEye(0));
             shipCamera_.follow(0, cameraSettings_);
             setFocusPolicy(Qt::StrongFocus);
             setMouseTracking(true);
@@ -103,7 +103,7 @@ private:
                 if (const auto model = scene_.shipModelPath(id)) {
                     const bool binocular = shipCamera_.binocular();
                     setBinocular(false);
-                    cameraSettings_ = loadShipCameraSettings(*model);
+                    cameraSettings_ = loadShipCameraSettings(*model, scene_.shipBridgeEye(id));
                     shipCamera_.follow(id, cameraSettings_);
                     scene_.setControlledShip(id);
                     setBinocular(binocular);

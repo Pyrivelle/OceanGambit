@@ -22,17 +22,17 @@ $env:OCEAN_CAPTURE_DIR = "$PWD/build/captures-moving"
 
 默认跟随一号船，按 `1` 或 `2` 可切换跟随对象。按住 **Alt** 移动鼠标调整观察方向，松开保留新角度。按住鼠标右键临时环顾，松开弹回之前的角度。按一次 **Shift** 进入望远镜并用鼠标调整视线，再按一次退出。望远镜隐藏所跟随舰船的 `ChuanLou` 渲染节点。两种视角共享局部偏航和俯仰，切换观察点时近处物体可能发生视差。准星绿色表示射线命中船模，白色表示找到 Z=0 海平面，灰色表示没有有效目标。
 
-`config/ShipCameras.json` 按 `model_file`（模型文件名）配置并部署到 `bin/ShipCameras.json`。可通过 `OCEAN_CAMERA_CONFIG` 指定自用 JSON。020528 的舰桥点来自现有船只目录的 `view_pos[0]`，使用模型局部坐标，+Y 指向舰艏，+Z 向上。
+`config/ShipCameras.json` 按 `model_file`（模型文件名）配置并部署到 `bin/ShipCameras.json`。可通过 `OCEAN_CAMERA_CONFIG` 指定自用 JSON。舰桥观察点来自舰型定义 `views` 中 id 为 `bridge` 的条目。坐标相对于模型原点，+Y 指向舰艏，+Z 向上。
 
 | JSON 字段 | 单位或含义 |
 | --- | --- |
-| `view_pos[0]` | 舰桥观察点的局部 X/Y/Z，米 |
+| 舰型定义中的 `views[bridge].eye` | 舰桥观察点的局部 X/Y/Z，米 |
 | `follow.distance` / `follow.height` | 跟随相机后拉距离和高度，米 |
 | `follow.pitch_deg` / `follow.fov_deg` | 初始俯仰角和垂直视场角，度 |
 | `follow.smoothing_seconds` | 位移平滑时间，秒，0 为关闭 |
 | `binocular.fov_deg` | 望远镜垂直视场角，度 |
 
-新增船型需要在目录中填入模型文件名、实测的第一个观察点和望远镜 FOV。缺少有效配置时仍可跟随，Shift 望远镜不可用。
+新增船型需要在舰型定义中填入舰桥观察点，并在相机配置中登记模型文件名及望远镜 FOV。缺少有效配置时仍可跟随，Shift 望远镜不可用。
 
 ```powershell
 .\OpenOceanGambit.cmd --moving
@@ -48,8 +48,19 @@ $env:OCEAN_CAPTURE_DIR = "$PWD/build/captures-moving"
 
 - `render/SkyLoader.cpp` 设置演示的天空背景。
 - `render/OceanLoader.cpp` 加载 Triton 海面并配置水位。
-- `render/ShipManager.cpp` 提供 `addShip()`，从 DMU 加载独立船体实例，并管理炮塔和位置。
+- `ShipManager` 通过 `addShip(code)` 缓存舰型定义并创建独立的 DMU 实例。
+- `ShipController` 管理模型世界姿态、舰桥和炮塔。旧场景使用第一座炮塔的第一根炮管，各炮管的局部炮口和方向独立存储。共享俯仰路径只建立一个控制器。
+- `NodeController` 验证从加载根节点开始的 `/n0/...` 索引和末端名称。普通节点使用模型空间的 `pivot`、`axis`、`sign`，原生 DOF 则由其 HPR 变换控制。
 - `battle/DemoScenario.cpp` 提供船位和射击事件。`render/NavalEffects.cpp` 调用现有原型播放特效及投射贴花。
+
+舰型回归使用 `NodeControllerCheck` 验证普通节点、DOF 和索引路径。构建 Release 后，可用本地模型检查零位炮口、偏航、俯仰、两艘船实例隔离及共享俯仰节点。
+
+```powershell
+$env:PATH = "$PWD/bin;$env:PATH"
+.\build\Release\NodeControllerCheck.exe --020528 "$PWD/bin"
+.\OpenOceanGambit.cmd --check
+.\OpenOceanGambit.cmd --check-camera --moving
+```
 
 ## 构建
 
@@ -64,7 +75,7 @@ $env:OCEAN_CAPTURE_DIR = "$PWD/build/captures-moving"
 
 Release 构建将可执行文件放入 `bin/`，并部署 Qt 平台插件、OSG/DMU 的 DLL、Triton 后端和资源。可直接运行 `bin/OceanGambit.exe`，也可使用根目录的启动脚本。
 
-CMake 缓存项 `OSG_DIR`、`OPENGL_HEADERS`、`OSG_RUNTIME`、`QT_RUNTIME`、`VEYLAXIS` 和 `TRITON_SDK` 可覆盖构建与部署来源。舰船模型沿用本机 020528，读取设置及许可证优先使用进程环境，其次读取本机配置。可通过 `OCEAN_MODEL` 或 `OCEAN_CONFIG` 指定相应文件。
+CMake 缓存项 `OSG_DIR`、`OPENGL_HEADERS`、`OSG_RUNTIME`、`QT_RUNTIME`、`VEYLAXIS` 和 `TRITON_SDK` 可覆盖构建与部署来源。双舰演示通过舰型 code `020528` 读取 `config/ships/020528.json`，部署后位于 `bin/ships/`。可通过 `OCEAN_SHIP_CONFIG_DIR` 指定其他舰型目录。模型默认从 `OCEAN_SHIP_MODEL_ROOT`（缺省为 `D:/Dragon/_Data`）下的分类/舰型目录加载，也可通过 `OCEAN_MODEL` 指定同名模型文件。读取设置及许可证优先使用进程环境，其次读取 `OCEAN_CONFIG` 指定的本机配置。
 
 演示脚本只提供射击时机和瞄准偏角。弹丸按 0.01 秒步进，默认使用游戏调校的下坠和指数速度阻尼（可切换平方阻力），散布在出膛时由同一随机种子生成。判定使用当步舰船网格和 Z=0 海面，跳过发射舰并选取线段上最先接触的位置。命中后沿用贴花、爆炸和水柱特效。参数是游戏调校值。
 

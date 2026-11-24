@@ -9,7 +9,7 @@
 #include <QJsonObject>
 #include <iostream>
 
-ShipCameraSettings loadShipCameraSettings(const std::string& modelPath) {
+ShipCameraSettings loadShipCameraSettings(const std::string& modelPath, std::optional<osg::Vec3d> bridgeEye) {
     ShipCameraSettings settings;
     const auto path = qEnvironmentVariable("OCEAN_CAMERA_CONFIG",
         QDir(QCoreApplication::applicationDirPath()).filePath("ShipCameras.json"));
@@ -38,12 +38,9 @@ ShipCameraSettings loadShipCameraSettings(const std::string& modelPath) {
         settings.pitch = read("pitch_deg", settings.pitch, -80, 80);
         settings.followFov = read("fov_deg", settings.followFov, 1, 150);
         settings.smoothingSeconds = read("smoothing_seconds", settings.smoothingSeconds, 0, 60);
-        const auto views = ship.value("view_pos").toArray();
-        const auto first = views.isEmpty() ? QJsonArray{} : views.first().toArray();
         const double fov = ship.value("binocular").toObject().value("fov_deg").toDouble();
-        if (first.size() == 3 && first[0].isDouble() && first[1].isDouble() &&
-            first[2].isDouble() && fov > 0 && fov < settings.followFov) {
-            settings.bridgeEye = osg::Vec3d(first[0].toDouble(), first[1].toDouble(), first[2].toDouble());
+        if (bridgeEye && fov > 0 && fov < settings.followFov) {
+            settings.bridgeEye = bridgeEye;
             settings.binocularFov = fov;
         }
         break;

@@ -4,4 +4,4 @@
 
 #include <string>
 
-ShipCameraSettings loadShipCameraSettings(const std::string& modelPath);
+ShipCameraSettings loadShipCameraSettings(const std::string& modelPath, std::optional<osg::Vec3d> bridgeEye);

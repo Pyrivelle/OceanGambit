@@ -1,10 +1,8 @@
 {
-  "source": "InfraredPreview/BridgeViews.json, model_code 528, view_pos[0]",
   "ships": [
     {
       "model_file": "020528.dmuShip",
       "model_code": 528,
-      "view_pos": [[0, 18.059999465942383, 12.90999984741211]],
       "follow": {
         "distance": 100,
         "height": 27,

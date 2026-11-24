@@ -241,11 +241,11 @@ struct BattleScene::Impl {
     }
 
     void loadShipManager() {
-        const auto model = qEnvironmentVariable("OCEAN_MODEL").toStdString();
         for (const auto& pose : scenario_.poses(0)) {
-            const auto id = ships_.addShip(model);
-            ships_.ship(id).place(pose.x, pose.y, pose.heading);
-            gunSettings_.push_back(loadShipWeaponSettings(model));
+            const auto id = ships_.addShip("020528");
+            auto& ship = ships_.ship(id);
+            ship.place(pose.x, pose.y, pose.heading);
+            gunSettings_.push_back(loadShipWeaponSettings(ship.modelPath()));
         }
     }
 
@@ -304,6 +304,11 @@ SceneStatus BattleScene::status() const { return impl_->status(); }
 std::optional<std::string> BattleScene::shipModelPath(ShipID id) const {
     if (id >= impl_->ships_.count()) return std::nullopt;
     return impl_->ships_.ship(id).modelPath();
+}
+
+std::optional<osg::Vec3d> BattleScene::shipBridgeEye(ShipID id) const {
+    if (id >= impl_->ships_.count()) return std::nullopt;
+    return impl_->ships_.ship(id).viewEye("bridge");
 }
 
 std::optional<osg::Matrixd> BattleScene::shipTransform(ShipID id) const {
