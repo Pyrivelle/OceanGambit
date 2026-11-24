@@ -25,6 +25,7 @@ public:
     ~BattleScene();
     osg::Group& root() const;
     void advance(double now);
+    void setPlayerControlEnabled(bool enabled);
     void setControlledShip(ShipID ship);
     void requestPlayerShot(ShipID ship, const osg::Vec3d& target);
     void requestPlayerFreeShot(ShipID ship, const osg::Vec3d& direction);

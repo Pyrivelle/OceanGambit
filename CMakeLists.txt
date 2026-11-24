@@ -11,6 +11,7 @@ find_package(OpenGL REQUIRED)
 add_executable(OceanGambit
     main.cpp
     app/BattleView.cpp
+    app/RTSCameraCheck.cpp
     app/LocalSettings.cpp
     app/ShipCameraSettings.cpp
     app/ShipWeaponSettings.cpp
@@ -26,6 +27,7 @@ add_executable(OceanGambit
     render/ShipManager.cpp
     render/SkyLoader.cpp
     render/ShipCameraController.cpp
+    render/RTSCameraController.cpp
     "external/InfraredPreview/ShipDecals.cpp"
     "external/InfraredPreview/NavalEffectsPreview.cpp"
     "external/InfraredPreview/InfraredPreview.cpp"

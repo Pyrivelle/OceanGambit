@@ -3,4 +3,5 @@
 
 int runBattleView(bool moving, bool check, bool quadratic, bool wows,
                   ocean_gambit::ballistics::Integrator integrator,
-                  bool overview = false, bool cameraCheck = false);
+                  bool overview = false, bool cameraCheck = false, bool follow = false,
+                  bool edgeScroll = true, bool rtsCheck = false);
