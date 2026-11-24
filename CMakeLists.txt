@@ -12,6 +12,7 @@ add_executable(OceanGambit
     main.cpp
     app/BattleView.cpp
     app/LocalSettings.cpp
+    app/ShipCameraSettings.cpp
     battle/DemoScenario.cpp
     battle/ProjectileSystem.cpp
     render/BattleScene.cpp
@@ -20,6 +21,7 @@ add_executable(OceanGambit
     render/OceanLoader.cpp
     render/ShipManager.cpp
     render/SkyLoader.cpp
+    render/ShipCameraController.cpp
     "external/InfraredPreview/ShipDecals.cpp"
     "external/InfraredPreview/NavalEffectsPreview.cpp"
     "external/InfraredPreview/InfraredPreview.cpp"
@@ -47,6 +49,8 @@ add_custom_target(OceanGambitRuntime ALL
         "-DTRITON_SDK=${TRITON_SDK}"
         "-DCRT_DLLS=${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS}"
         -P "${PROJECT_SOURCE_DIR}/cmake/DeployRuntime.cmake"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${PROJECT_SOURCE_DIR}/config/ShipCameras.json" "$<TARGET_FILE_DIR:OceanGambit>/ShipCameras.json"
     DEPENDS OceanGambit
     VERBATIM)
 

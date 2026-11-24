@@ -2,4 +2,5 @@
 #include "../battle/WowsMotion.h"
 
 int runBattleView(bool moving, bool check, bool quadratic, bool wows,
-                  ocean_gambit::ballistics::Integrator integrator);
+                  ocean_gambit::ballistics::Integrator integrator,
+                  bool overview = false, bool cameraCheck = false);

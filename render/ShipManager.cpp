@@ -4,6 +4,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <osg/ComputeBoundsVisitor>
+#include <osg/Callback>
 #include <osgDB/ReadFile>
 #include <osgDB/Registry>
 #include <cmath>
@@ -11,6 +12,11 @@
 
 namespace {
 using Point = osg::Vec3d;
+
+class HideFromCamera : public osg::NodeCallback {
+public:
+    void operator()(osg::Node*, osg::NodeVisitor*) override {}
+};
 using Preview = Pyrive::OsgKit::InfraredPreview;
 // The same DMU reader and visible-light material pass used by InfraredPreview.
 osg::ref_ptr<osg::Node> loadShip(const std::string& modelPath) {
@@ -37,9 +43,16 @@ osg::Node& namedChild(osg::Group& group, const char* name) {
 }
 }
 
-Ship::Ship(const std::string& modelPath) {
+Ship::Ship(const std::string& modelPath) : modelPath_(modelPath) {
     model_ = loadShip(modelPath);
     auto& body = *model_->asGroup();
+    for (unsigned i = 0; i < body.getNumChildren(); ++i) {
+        auto* child = body.getChild(i);
+        if (child->getName() == "ChuanLou") {
+            bridge_ = child;
+            break;
+        }
+    }
     auto& hull = *namedChild(body, "ChuanTi").asGroup();
     auto& barrel = namedChild(hull, "l203");
     auto& housing = namedChild(hull, "l202");
@@ -58,7 +71,15 @@ Ship::Ship(const std::string& modelPath) {
 
 MuzzlePose Ship::poseTurret(const Point& cue) {
     const auto inverse = osg::Matrix::inverse(placement_->getMatrix());
-    const Point direction = cue * inverse - muzzle_;
+    return poseTurretLocal(cue * inverse - muzzle_);
+}
+
+MuzzlePose Ship::poseTurretDirection(const Point& worldDirection) {
+    const auto inverse = osg::Matrix::inverse(placement_->getMatrix());
+    return poseTurretLocal(osg::Matrix::transform3x3(worldDirection, inverse));
+}
+
+MuzzlePose Ship::poseTurretLocal(const Point& direction) {
     const Point yawPivot(0, 26.6, 9.4), pitchPivot(0, 26.7, 10.7);
     const double yaw = -std::atan2(direction.x(), direction.y());
     const double pitch = std::atan2(direction.z(), std::hypot(direction.x(), direction.y()));
@@ -68,6 +89,17 @@ MuzzlePose Ship::poseTurret(const Point& cue) {
                           osg::Matrix::rotate(pitch, 1, 0, 0) * osg::Matrix::translate(pitchPivot));
     const auto world = barrelPitch_->getMatrix() * turretYaw_->getMatrix() * placement_->getMatrix();
     return {muzzle_ * world, osg::Matrix::transform3x3(Point(0, 1, 0), world)};
+}
+
+void Ship::setBridgeHidden(bool hidden) {
+    if (!bridge_) return;
+    if (hidden && !bridgeHider_) {
+        bridgeHider_ = new HideFromCamera;
+        bridge_->addCullCallback(bridgeHider_);
+    } else if (!hidden && bridgeHider_) {
+        bridge_->removeCullCallback(bridgeHider_);
+        bridgeHider_ = nullptr;
+    }
 }
 
 void Ship::place(double x, double y, double heading) {

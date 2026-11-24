@@ -12,6 +12,7 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <vector>
 
 namespace {
 void logProjectile(double time, unsigned id, unsigned source, const char* event, const osg::Vec3d& position) {
@@ -22,14 +23,14 @@ void logProjectile(double time, unsigned id, unsigned source, const char* event,
 }
 
 struct BattleScene::Impl {
-    Impl(osgViewer::Viewer& viewer, bool moving, bool quadratic, bool wows, ocean_gambit::ballistics::Integrator integrator)
+    Impl(osgViewer::Viewer& viewer, bool moving, bool quadratic, bool wows, ocean_gambit::ballistics::Integrator integrator, bool playerControlled)
         : viewer_(viewer), ships_(*root_), scenario_(moving), effects_(viewer, *root_, ships_),
           projectiles_([&] {
               auto ammo = wows ? AmmoConfig::wowsDemo() :
                           quadratic ? AmmoConfig::quadraticDemo() : AmmoConfig::exponentialDemo();
               if (wows) ammo.integrator = integrator;
               return ammo;
-          }()) {
+          }()), playerControlled_(playerControlled) {
         loadSky(*viewer_.getCamera());
         ocean_ = loadOcean(*root_);
         loadShipManager();
@@ -48,7 +49,14 @@ struct BattleScene::Impl {
                     if (hit) logProjectile(contactTime, id, source, hit->ship ? "hull" : "water", hit->position);
                     effects_.contact(id, hit, contactTime);
                 });
-            if (const auto cue = scenario_.nextShot(time)) launch(*cue, time);
+            if (const auto cue = scenario_.nextShot(time)) {
+                if (!playerControlled_ || cue->from != 0) launch(*cue, time);
+            }
+            for (const auto& direction : playerRequests_) {
+                const auto muzzle = ships_.ship(0).poseTurretDirection(direction);
+                spawn(0, muzzle, time);
+            }
+            playerRequests_.clear();
         }
         effects_.advance(now);
     }
@@ -75,13 +83,19 @@ struct BattleScene::Impl {
         const osg::Vec3d aimPoint = initial.position + horizontal * range +
             osg::Vec3d(0, 0, std::tan(elevation) * range);
         const auto muzzle = ships_.ship(cue.from).poseTurret(aimPoint);
-        const auto previous = scenario_.poses(time - ProjectileSystem::interval).at(cue.from);
-        const auto current = scenario_.poses(time).at(cue.from);
+        spawn(cue.from, muzzle, time);
+    }
+
+    void spawn(ShipID source, const MuzzlePose& muzzle, double time) {
+        const unsigned id = ++projectileId_;
+        ++launchCounts_.at(source);
+        const auto previous = scenario_.poses(time - ProjectileSystem::interval).at(source);
+        const auto current = scenario_.poses(time).at(source);
         const osg::Vec3d motion((current.x - previous.x) / ProjectileSystem::interval,
                                (current.y - previous.y) / ProjectileSystem::interval, 0);
-        projectiles_.launch(cue.id, cue.from, muzzle.position, muzzle.forward, motion);
-        effects_.launch(cue.id, muzzle, time);
-        logProjectile(time, cue.id, cue.from, "launch", muzzle.position);
+        projectiles_.launch(id, source, muzzle.position, muzzle.forward, motion);
+        effects_.launch(id, muzzle, time);
+        logProjectile(time, id, source, "launch", muzzle.position);
     }
 
     std::optional<ProjectileContact> trace(unsigned source, const osg::Vec3d& from,
@@ -112,7 +126,7 @@ struct BattleScene::Impl {
     SceneStatus status() const {
         const auto state = effects_.status();
         return {ocean_->isInitialized(), state.decalCounts, state.flight, state.splash,
-                state.decalAttached, state.decalMoved, state.explosions};
+                state.decalAttached, state.decalMoved, state.explosions, launchCounts_};
     }
 
     void loadShipManager() {
@@ -136,14 +150,63 @@ struct BattleScene::Impl {
     DemoScenario scenario_;
     NavalEffects effects_;
     ProjectileSystem projectiles_;
+    bool playerControlled_;
     unsigned tick_ = 0;
+    unsigned projectileId_ = 0;
+    std::array<unsigned, 2> launchCounts_{};
+    std::vector<osg::Vec3d> playerRequests_;
 };
 
 BattleScene::BattleScene(osgViewer::Viewer& viewer, bool moving, bool quadratic,
-                         bool wows, ocean_gambit::ballistics::Integrator integrator)
-    : impl_(std::make_unique<Impl>(viewer, moving, quadratic, wows, integrator)) {}
+                         bool wows, ocean_gambit::ballistics::Integrator integrator, bool playerControlled)
+    : impl_(std::make_unique<Impl>(viewer, moving, quadratic, wows, integrator, playerControlled)) {}
 BattleScene::~BattleScene() = default;
 osg::Group& BattleScene::root() const { return *impl_->root_; }
 void BattleScene::advance(double now) { impl_->advance(now); }
+void BattleScene::requestPlayerShot(const osg::Vec3d& viewDirection) {
+    if (impl_->playerControlled_ && viewDirection.length2() > 0)
+        impl_->playerRequests_.push_back(viewDirection);
+}
 bool BattleScene::oceanReady() const { return impl_->ocean_->isInitialized(); }
 SceneStatus BattleScene::status() const { return impl_->status(); }
+
+std::optional<std::string> BattleScene::shipModelPath(ShipID id) const {
+    if (id >= impl_->ships_.count()) return std::nullopt;
+    return impl_->ships_.ship(id).modelPath();
+}
+
+std::optional<osg::Matrixd> BattleScene::shipTransform(ShipID id) const {
+    if (id >= impl_->ships_.count()) return std::nullopt;
+    return impl_->ships_.ship(id).node().getMatrix();
+}
+
+void BattleScene::setBridgeHidden(ShipID id, bool hidden) {
+    if (id < impl_->ships_.count()) impl_->ships_.ship(id).setBridgeHidden(hidden);
+}
+
+std::optional<CameraTarget> BattleScene::pickTarget(const CameraRay& ray, ShipID exclude) const {
+    constexpr double maxPickDistance = 14000;
+    const auto end = ray.origin + ray.direction * maxPickDistance;
+    std::optional<CameraTarget> result;
+    double nearest = 1.;
+    for (ShipID id = 0; id < impl_->ships_.count(); ++id) {
+        if (id == exclude) continue;
+        const auto& ship = impl_->ships_.ship(id);
+        const auto pose = ship.node().getMatrix();
+        const auto inverse = osg::Matrixd::inverse(pose);
+        osg::ref_ptr<osgUtil::LineSegmentIntersector> line =
+            new osgUtil::LineSegmentIntersector(ray.origin * inverse, end * inverse);
+        osgUtil::IntersectionVisitor query(line);
+        ship.model().accept(query);
+        if (!line->containsIntersections()) continue;
+        const auto hit = line->getFirstIntersection();
+        if (hit.ratio <= nearest) {
+            nearest = hit.ratio;
+            result = CameraTarget{hit.getWorldIntersectPoint() * pose, id};
+        }
+    }
+    if (result) return result;
+    if (const auto sea = ShipCameraController::intersectSea(ray))
+        return CameraTarget{*sea, std::nullopt};
+    return std::nullopt;
+}

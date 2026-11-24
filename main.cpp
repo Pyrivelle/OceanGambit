@@ -25,7 +25,8 @@ int main(int argc, char** argv) {
         if (args.contains("--integrator-ab5")) method = Integrator::AdamsBashforth5;
         return runBattleView(args.contains("--moving"),
                              args.contains("--check") || args.contains("--window-check"),
-                             args.contains("--drag-quadratic") && !wows, wows, method);
+                             args.contains("--drag-quadratic") && !wows, wows, method,
+                             args.contains("--overview"), args.contains("--check-camera"));
     } catch (const std::exception& e) {
         std::cerr << e.what() << std::endl;
         return 1;

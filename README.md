@@ -18,6 +18,30 @@ $env:OCEAN_CAPTURE_DIR = "$PWD/build/captures-moving"
 
 默认模式中两艘船的中心相距 1,000 米，分别从原来正对的方向偏转 45°，舰艏方向相差 90°。`--moving` 让第二艘船缓慢横移。自动验收检查 Triton 是否初始化、同一机位两帧的海面区域是否发生变化、炮弹飞行和落水阶段是否触发、两艘船是否各获得烧蚀贴花，以及贴花是否随第二艘船移动。设置 `OCEAN_CAPTURE_DIR` 后会保存两张海面帧，以及飞行、舰体爆炸、残烟和水柱帧。日志包含仿真时间、发射方、弹丸编号和场景坐标。已有的单船桥视角模式由 `OpenPrototype.cmd` 调用外部 InfraredPreview 原型启动。
 
+## 跟随相机与望远镜
+
+默认跟随一号船，按 `1` 或 `2` 可切换跟随对象。按住 **Alt** 移动鼠标调整观察方向，松开保留新角度。按住鼠标右键临时环顾，松开弹回之前的角度。按一次 **Shift** 进入望远镜并用鼠标调整视线，再按一次退出。望远镜隐藏所跟随舰船的 `ChuanLou` 渲染节点。两种视角共享局部偏航和俯仰，切换观察点时近处物体可能发生视差。准星绿色表示射线命中船模，白色表示找到 Z=0 海平面，灰色表示没有有效目标。
+
+`config/ShipCameras.json` 按 `model_file`（模型文件名）配置并部署到 `bin/ShipCameras.json`。可通过 `OCEAN_CAMERA_CONFIG` 指定自用 JSON。020528 的舰桥点来自现有船只目录的 `view_pos[0]`，使用模型局部坐标，+Y 指向舰艏，+Z 向上。
+
+| JSON 字段 | 单位或含义 |
+| --- | --- |
+| `view_pos[0]` | 舰桥观察点的局部 X/Y/Z，米 |
+| `follow.distance` / `follow.height` | 跟随相机后拉距离和高度，米 |
+| `follow.pitch_deg` / `follow.fov_deg` | 初始俯仰角和垂直视场角，度 |
+| `follow.smoothing_seconds` | 位移平滑时间，秒，0 为关闭 |
+| `binocular.fov_deg` | 望远镜垂直视场角，度 |
+
+新增船型需要在目录中填入模型文件名、实测的第一个观察点和望远镜 FOV。缺少有效配置时仍可跟随，Shift 望远镜不可用。
+
+```powershell
+.\OpenOceanGambit.cmd --moving
+.\OpenOceanGambit.cmd --overview
+.\OpenOceanGambit.cmd --check-camera --moving
+```
+
+`--overview` 恢复原双船全景，原有 `--check` 也沿用全景验收。相机验收覆盖舰艏方向、Shift 切换、鼠标旋转、平移和转向跟随、舰体和海面取点以及无效射线。玩家视角下一号船只在左键点击时发射，炮塔按已锁定的观察方向直接转动，弹丸从炮口出发。右键临时环顾期间，左键使用环顾前的方向。二号船仍由脚本控制。`--overview` 和原有 `--check` 使用双船脚本。
+
 ## 场景骨架
 
 `main.cpp` 负责启动应用。`BattleView` 提供 Qt/OpenGL 窗口并驱动帧循环。`BattleScene` 创建场景根节点，然后调用 `loadSky()`、`loadOcean()` 和 `loadShipManager()`。
