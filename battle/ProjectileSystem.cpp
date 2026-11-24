@@ -76,8 +76,21 @@ double ProjectileSystem::aimElevation(double horizontalRange, double heightDiffe
 
 std::optional<double> ProjectileSystem::solveElevation(
     double horizontalRange, double heightDifference) const {
-    if (horizontalRange <= 0 || ammo_.launchPace <= 0) return std::nullopt;
-    const auto heightAtRange = [&](double angle) {
+    return solveElevation(horizontalRange, heightDifference, FireArc::Low, -0.1, 1.2);
+}
+
+std::optional<double> ProjectileSystem::solveElevation(
+    double horizontalRange, double heightDifference, FireArc arc,
+    double minElevationRad, double maxElevationRad) const {
+    if (!std::isfinite(horizontalRange) || !std::isfinite(heightDifference) ||
+        !std::isfinite(minElevationRad) || !std::isfinite(maxElevationRad) ||
+        horizontalRange <= 0 || ammo_.launchPace <= 0 ||
+        minElevationRad >= maxElevationRad ||
+        minElevationRad <= -1.5707963267948966 ||
+        maxElevationRad >= 1.5707963267948966)
+        return std::nullopt;
+
+    const auto heightAtRange = [&](double angle) -> std::optional<double> {
         osg::Vec3d p(0, 0, 0);
         osg::Vec3d v(ammo_.launchPace * std::cos(angle), 0,
                      ammo_.launchPace * std::sin(angle));
@@ -87,31 +100,51 @@ std::optional<double> ProjectileSystem::solveElevation(
             const osg::Vec3d old = p;
             integrate(p, v, history);
             if (p.x() >= horizontalRange) {
-                const double f = (horizontalRange - old.x()) / (p.x() - old.x());
-                return old.z() + (p.z() - old.z()) * f;
+                const double dx = p.x() - old.x();
+                if (dx <= 0) return std::nullopt;
+                const double t = (horizontalRange - old.x()) / dx;
+                return old.z() + (p.z() - old.z()) * t;
             }
             if (v.x() <= 0) break;
         }
-        return -1e100;
+        return std::nullopt;
     };
 
-    // Scan for the first upward crossing to find the low arc. This brackets
-    // the root before bisection; out-of-range targets return no firing solution.
-    constexpr double start = -0.10, stop = 1.20, step = 0.02;
-    double lo = start;
-    double errorLo = heightAtRange(lo) - heightDifference;
-    for (double hi = lo + step; hi <= stop + 1e-9; hi += step) {
-        const double errorHi = heightAtRange(hi) - heightDifference;
-        if (errorLo <= 0 && errorHi >= 0) {
-            for (int j = 0; j < 28; ++j) {
-                const double middle = (lo + hi) * .5;
-                if (heightAtRange(middle) < heightDifference) lo = middle;
-                else hi = middle;
-            }
-            return (lo + hi) * .5;
+    // Scan the full allowed gun envelope for signed crossings. The first
+    // crossing is the low arc and the last is the high arc. A missing trajectory
+    // (range not reached before expiration) must NOT become a fake high root.
+    struct Bracket { double lo, hi; };
+    std::vector<Bracket> brackets;
+    const double scanStep = 0.025;
+    std::optional<double> previous;
+    double previousAngle = minElevationRad;
+    const int count = std::max(1, static_cast<int>(
+        std::ceil((maxElevationRad - minElevationRad) / scanStep)));
+    for (int i = 0; i <= count; ++i) {
+        const double angle = minElevationRad +
+            (maxElevationRad - minElevationRad) * i / count;
+        const auto height = heightAtRange(angle);
+        if (height && previous) {
+            const double a = *previous - heightDifference;
+            const double b = *height - heightDifference;
+            if ((a <= 0 && b >= 0) || (a >= 0 && b <= 0))
+                brackets.push_back({previousAngle, angle});
         }
-        lo = hi;
-        errorLo = errorHi;
+        previous = height;
+        previousAngle = angle;
     }
-    return std::nullopt;
+    if (brackets.empty() || (arc == FireArc::High && brackets.size() < 2))
+        return std::nullopt;
+    auto bracket = arc == FireArc::Low ? brackets.front() : brackets.back();
+    const auto leftHeight = heightAtRange(bracket.lo);
+    if (!leftHeight) return std::nullopt;
+    const bool leftBelow = *leftHeight < heightDifference;
+    for (int iteration = 0; iteration < 30; ++iteration) {
+        const double mid = (bracket.lo + bracket.hi) * .5;
+        const auto height = heightAtRange(mid);
+        if (!height) return std::nullopt;
+        if ((*height < heightDifference) == leftBelow) bracket.lo = mid;
+        else bracket.hi = mid;
+    }
+    return (bracket.lo + bracket.hi) * .5;
 }

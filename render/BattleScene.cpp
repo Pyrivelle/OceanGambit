@@ -4,6 +4,7 @@
 #include "SkyLoader.h"
 #include "../battle/DemoScenario.h"
 #include "NavalEffects.h"
+#include "../app/ShipWeaponSettings.h"
 
 #include <QtGlobal>
 #include <osgUtil/IntersectionVisitor>
@@ -71,8 +72,10 @@ struct BattleScene::Impl {
         if (range > 0) horizontal /= range;
         horizontal = osg::Matrix::transform3x3(horizontal,
             osg::Matrix::rotate(cue.yawOffset, 0, 0, 1));
+        const auto gun = gunSettings_.at(cue.from);
         const auto solution = projectiles_.solveElevation(
-            range, targetPoint.z() - initial.position.z());
+            range, targetPoint.z() - initial.position.z(),
+            gun.arc, gun.minElevationRad(), gun.maxElevationRad());
         if (!solution) {
             std::cerr << "No firing solution at range=" << range << '\n';
             return;
@@ -90,6 +93,7 @@ struct BattleScene::Impl {
     void launchPlayer(ShipID source, const osg::Vec3d& target, double time) {
         if (source >= ships_.count()) return;
         auto& ship = ships_.ship(source);
+        const auto gun = gunSettings_.at(source);
         MuzzlePose muzzle = ship.poseTurret(target);
         double elevation = 0;
         for (int i = 0; i < 5; ++i) {
@@ -101,7 +105,8 @@ struct BattleScene::Impl {
                 return;
             }
             const auto solution = projectiles_.solveElevation(
-                range, target.z() - muzzle.position.z());
+                range, target.z() - muzzle.position.z(),
+                gun.arc, gun.minElevationRad(), gun.maxElevationRad());
             if (!solution) {
                 std::cerr << "Fire control: no ballistic solution, range="
                           << range << " height=" << target.z() - muzzle.position.z() << '\n';
@@ -117,6 +122,7 @@ struct BattleScene::Impl {
             if (delta < 1e-5) break;
         }
         std::cout << "fire_control ship=" << source + 1
+                  << " arc=" << (gun.arc == FireArc::High ? "high" : "low")
                   << " elevation_deg=" << elevation * (180.0 / 3.14159265358979323846)
                   << " target=(" << target.x() << ',' << target.y() << ',' << target.z()
                   << ") muzzle=(" << muzzle.position.x() << ','
@@ -169,8 +175,11 @@ struct BattleScene::Impl {
 
     void loadShipManager() {
         const auto model = qEnvironmentVariable("OCEAN_MODEL").toStdString();
-        for (const auto& pose : scenario_.poses(0))
-            ships_.ship(ships_.addShip(model)).place(pose.x, pose.y, pose.heading);
+        for (const auto& pose : scenario_.poses(0)) {
+            const auto id = ships_.addShip(model);
+            ships_.ship(id).place(pose.x, pose.y, pose.heading);
+            gunSettings_.push_back(loadShipWeaponSettings(model));
+        }
     }
 
     void updateShipPoses(double now) {
@@ -188,6 +197,7 @@ struct BattleScene::Impl {
     DemoScenario scenario_;
     NavalEffects effects_;
     ProjectileSystem projectiles_;
+    std::vector<ShipWeaponSettings> gunSettings_;
     bool playerControlled_;
     ShipID controlledShip_ = 0;
     struct PlayerShot { ShipID ship; osg::Vec3d target; };

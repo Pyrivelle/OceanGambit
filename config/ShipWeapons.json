@@ -1,0 +1,12 @@
+{
+  "ships": [
+    {
+      "model_file": "020528.dmuShip",
+      "gun": {
+        "arc": "low",
+        "min_elevation_deg": -5,
+        "max_elevation_deg": 85
+      }
+    }
+  ]
+}

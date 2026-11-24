@@ -86,6 +86,25 @@ int main() {
     const bool inverseWows = checkAim(wowsAim, 1000, -6);
     const bool unreachable = !ProjectileSystem(wowsAim).solveElevation(1000000, 0).has_value();
 
+    // Two branches of the same physical trajectory. Disable atmospheric drag
+    // and allow sufficient lifetime so the high branch can reach the target.
+    auto doubleArc = AmmoConfig::quadraticDemo();
+    doubleArc.dragK = 0;
+    doubleArc.spread = 0;
+    doubleArc.lifetime = 180;
+    ProjectileSystem solver(doubleArc);
+    const auto lowArc = solver.solveElevation(1000, 0, FireArc::Low, 0.0, 1.55);
+    const auto highArc = solver.solveElevation(1000, 0, FireArc::High, 0.0, 1.55);
+    const bool twoArcs = lowArc && highArc && *lowArc < *highArc &&
+        *lowArc < .1 && *highArc > 1.4 &&
+        std::abs(*lowArc + *highArc - 1.5707963267948966) < .02;
+    const auto restrictedHigh = solver.solveElevation(1000, 0, FireArc::High, 0.0, .6);
+    // A high-arc profile cannot silently fall back to the low branch.
+    const bool restricted = !restrictedHigh.has_value();
+    const auto shortLife = AmmoConfig::wowsDemo();
+    const bool noLongRange = !ProjectileSystem(shortLife).solveElevation(
+        1000000, 0, FireArc::High, 0.0, 1.55).has_value();
+
     ProjectileSystem stopped;
     stopped.launch(1, 0, {}, {1, 0, 0}, {});
     int contacts = 0;
@@ -100,6 +119,7 @@ int main() {
               << " quadratic_replay=" << quadraticReplay << " aim=" << aim
               << " inverse_legacy=" << inverseLegacy
               << " inverse_wows=" << inverseWows
-              << " unreachable=" << unreachable << '\n';
-    return arc && damping && replay && singleContact && quadraticDrag && quadraticReplay && aim && inverseLegacy && inverseWows && unreachable ? 0 : 1;
+              << " unreachable=" << unreachable << " two_arcs=" << twoArcs
+              << " restricted=" << restricted << " no_long_range=" << noLongRange << '\n';
+    return arc && damping && replay && singleContact && quadraticDrag && quadraticReplay && aim && inverseLegacy && inverseWows && unreachable && twoArcs && restricted && noLongRange ? 0 : 1;
 }

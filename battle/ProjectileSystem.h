@@ -10,6 +10,7 @@
 
 // These parameters describe a projectile/ammunition type, not a global battle rule.
 enum class DragMode { Exponential, Quadratic, WowsShell };
+enum class FireArc { Low, High };
 
 struct AmmoConfig {
     double launchPace = 670.0;   // m/s
@@ -32,7 +33,8 @@ struct AmmoConfig {
         ammo.dragMode = DragMode::WowsShell;
         ammo.downPull = 9.8;
         ammo.spread = 0.0012; // angular maximum, sigma=2 gives similar central width
-        ammo.lifetime = 30.0;
+        // High arc may take considerably longer than the original 30 s demo.
+        ammo.lifetime = 120.0;
         return ammo;
     }
     static AmmoConfig quadraticDemo() {
@@ -71,6 +73,9 @@ public:
     // Target is stationary; no ship motion, dispersion or fire-control lead.
     double aimElevation(double horizontalRange, double heightDifference) const;
     std::optional<double> solveElevation(double horizontalRange, double heightDifference) const;
+    std::optional<double> solveElevation(double horizontalRange, double heightDifference,
+                                         FireArc arc, double minElevationRad,
+                                         double maxElevationRad) const;
     const AmmoConfig& ammo() const { return ammo_; }
     static constexpr double interval = .01;
 

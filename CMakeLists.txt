@@ -13,6 +13,7 @@ add_executable(OceanGambit
     app/BattleView.cpp
     app/LocalSettings.cpp
     app/ShipCameraSettings.cpp
+    app/ShipWeaponSettings.cpp
     battle/DemoScenario.cpp
     battle/ProjectileSystem.cpp
     render/BattleScene.cpp
@@ -51,6 +52,8 @@ add_custom_target(OceanGambitRuntime ALL
         -P "${PROJECT_SOURCE_DIR}/cmake/DeployRuntime.cmake"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
         "${PROJECT_SOURCE_DIR}/config/ShipCameras.json" "$<TARGET_FILE_DIR:OceanGambit>/ShipCameras.json"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${PROJECT_SOURCE_DIR}/config/ShipWeapons.json" "$<TARGET_FILE_DIR:OceanGambit>/ShipWeapons.json"
     DEPENDS OceanGambit
     VERBATIM)
 
