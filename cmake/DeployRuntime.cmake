@@ -22,3 +22,8 @@ file(COPY ${backends} ${dependencies} DESTINATION "${BIN}")
 if(CRT_DLLS)
     file(COPY ${CRT_DLLS} DESTINATION "${BIN}")
 endif()
+
+if(IS_DIRECTORY "${SHIP_CONFIG}")
+    file(COPY "${SHIP_CONFIG}/" DESTINATION "${BIN}/ships"
+        FILES_MATCHING PATTERN "*.json")
+endif()

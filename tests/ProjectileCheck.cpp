@@ -51,6 +51,78 @@ int main() {
     const double angle = ProjectileSystem(quadratic).aimElevation(1000.0, -6.0);
     const bool aim = std::isfinite(angle) && angle > -0.1 && angle < 0.35;
 
+    // The inverse elevation must agree with the live integrator when
+    // dispersion is disabled. Check height at the target range on descent.
+    const auto checkAim = [](AmmoConfig ammo, double distance, double height) {
+        ammo.spread = 0;
+        ammo.lifetime = 30;
+        ProjectileSystem system(ammo, 528);
+        const auto solution = system.solveElevation(distance, height);
+        if (!solution) return false;
+        const double angle = *solution;
+        system.launch(0, 0, {0, 0, 0},
+                      {std::cos(angle), 0, std::sin(angle)}, {});
+        osg::Vec3d last;
+        bool haveLast = false, reached = false;
+        double atRange = 0;
+        for (int i = 0; i < 3000 && !reached; ++i) {
+            system.step([](unsigned, const auto&, const auto&) { return std::nullopt; },
+                        [&](unsigned, const osg::Vec3d& pos) {
+                            if (haveLast && last.x() <= distance && pos.x() >= distance) {
+                                const double u = (distance - last.x()) / (pos.x() - last.x());
+                                atRange = last.z() + (pos.z() - last.z()) * u;
+                                reached = true;
+                            }
+                            last = pos;
+                            haveLast = true;
+                        }, [](unsigned, unsigned, const auto&) {});
+        }
+        return reached && std::abs(atRange - height) < 0.05;
+    };
+    auto legacyAim = AmmoConfig::exponentialDemo();
+    legacyAim.lifetime = 30;
+    const bool inverseLegacy = checkAim(legacyAim, 1000, -6);
+    auto wowsAim = AmmoConfig::wowsDemo();
+    const bool inverseWows = checkAim(wowsAim, 1000, -6);
+    const bool unreachable = !ProjectileSystem(wowsAim).solveElevation(1000000, 0).has_value();
+
+    // Two branches of the same physical trajectory. Disable atmospheric drag
+    // and allow sufficient lifetime so the high branch can reach the target.
+    auto doubleArc = AmmoConfig::quadraticDemo();
+    doubleArc.dragK = 0;
+    doubleArc.spread = 0;
+    doubleArc.lifetime = 180;
+    ProjectileSystem solver(doubleArc);
+    const auto lowArc = solver.solveElevation(1000, 0, FireArc::Low, 0.0, 1.565);
+    const auto highArc = solver.solveElevation(1000, 0, FireArc::High, 0.0, 1.565);
+    const auto highDetail = solver.fireControlSolution(1000, 0, FireArc::High, 0.0, 1.565);
+    const auto lowDetail = solver.fireControlSolution(1000, 0, FireArc::Low, 0.0, 1.565);
+    const bool arcTiming = highDetail.flightSeconds && lowDetail.flightSeconds &&
+        *highDetail.flightSeconds > *lowDetail.flightSeconds;
+    const bool twoArcs = lowArc && highArc && *lowArc < *highArc &&
+        *lowArc < .1 && *highArc > 1.4 &&
+        std::abs(*lowArc + *highArc - 1.5707963267948966) < .02;
+    const auto restrictedHigh = solver.solveElevation(1000, 0, FireArc::High, 0.0, .6);
+    // Strict angle-only API does not fallback; diagnostic API does.
+    const auto fallback = solver.fireControlSolution(1000, 0, FireArc::High, 0.0, .6);
+    const bool restricted = !restrictedHigh.has_value() &&
+        fallback.status == FireControlStatus::FallbackLow &&
+        fallback.selectedArc == FireArc::Low &&
+        fallback.elevation && lowArc &&
+        std::abs(*fallback.elevation - *lowArc) < 1e-4;
+    const auto shortLife = AmmoConfig::wowsDemo();
+    const auto beyond = ProjectileSystem(shortLife).fireControlSolution(
+        1000000, 0, FireArc::High, 0.0, 1.565);
+    const bool noLongRange = !beyond.elevation &&
+        beyond.status == FireControlStatus::OutOfRange;
+    const auto angleLimited = solver.fireControlSolution(
+        1000, 0, FireArc::Low, .2, .6);
+    const bool elevationLimit = !angleLimited.elevation &&
+        angleLimited.status == FireControlStatus::ElevationLimited;
+    const auto invalidTarget = solver.fireControlSolution(
+        -1, 0, FireArc::Low, 0, 1);
+    const bool invalid = invalidTarget.status == FireControlStatus::InvalidTarget;
+
     ProjectileSystem stopped;
     stopped.launch(1, 0, {}, {1, 0, 0}, {});
     int contacts = 0;
@@ -62,6 +134,11 @@ int main() {
     const bool singleContact = contacts == 1;
     std::cout << "arc=" << arc << " damping=" << damping << " replay=" << replay
               << " single_contact=" << singleContact << " quadratic=" << quadraticDrag
-              << " quadratic_replay=" << quadraticReplay << " aim=" << aim << '\n';
-    return arc && damping && replay && singleContact && quadraticDrag && quadraticReplay && aim ? 0 : 1;
+              << " quadratic_replay=" << quadraticReplay << " aim=" << aim
+              << " inverse_legacy=" << inverseLegacy
+              << " inverse_wows=" << inverseWows
+              << " unreachable=" << unreachable << " two_arcs=" << twoArcs
+              << " arc_timing=" << arcTiming << " restricted=" << restricted << " no_long_range=" << noLongRange
+              << " elevation_limit=" << elevationLimit << " invalid=" << invalid << '\n';
+    return arc && damping && replay && singleContact && quadraticDrag && quadraticReplay && aim && inverseLegacy && inverseWows && unreachable && twoArcs && arcTiming && restricted && noLongRange && elevationLimit && invalid ? 0 : 1;
 }

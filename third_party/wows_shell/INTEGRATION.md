@@ -35,3 +35,14 @@ Integration:
 For future work: independently test float precision, coordinate units,
 sweep versus per-projectile runtime performance, and reference consistency
 against a fixed-step solver before using the outputs for FireControl.
+
+## Live prototype extension
+
+The optional `--ballistics-wows` route in `ProjectileSystem` uses
+`battle/WowsMotion.h`: a per-step three-dimensional port of the upstream
+ISA/quadratic-drag ODE, plus selectable Euler/RK2/RK4/AB5 integration. It is
+**not** a direct use of the upstream batch `shellCalc` in the frame loop.
+The batch adapter continues to serve offline reference computations only.
+Existing collision trace/decal handling is unchanged. A seeded truncated-normal
+angular spread is applied at launch; WoWS distance-dependent dispersion
+and armor penetration remain future work.
