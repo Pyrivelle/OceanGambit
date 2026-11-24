@@ -56,4 +56,13 @@ if(BUILD_TESTING)
     target_compile_features(ProjectileCheck PRIVATE cxx_std_17)
     target_include_directories(ProjectileCheck PRIVATE ${OPENSCENEGRAPH_INCLUDE_DIRS} "${OPENGL_HEADERS}")
     add_test(NAME ProjectileCheck COMMAND ProjectileCheck)
+
+    # Standalone, OSG-free third-party comparison test; not used by the battle loop.
+    add_executable(WowsShellCheck tests/WowsShellCheck.cpp battle/WowsShellAdapter.cpp)
+    target_compile_features(WowsShellCheck PRIVATE cxx_std_17)
+    target_include_directories(WowsShellCheck PRIVATE "${PROJECT_SOURCE_DIR}")
+    if(MSVC)
+        target_compile_options(WowsShellCheck PRIVATE /utf-8)
+    endif()
+    add_test(NAME WowsShellCheck COMMAND WowsShellCheck)
 endif()

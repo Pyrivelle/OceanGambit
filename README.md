@@ -58,3 +58,16 @@ ctest --test-dir build -C Release --output-on-failure
 ```
 
 `AmmoConfig` 可按弹药类型配置初速、下坠、阻力模型、散布与寿命；旧 `ProjectileTuning` 名称保留为兼容别名。炮塔仰角现在依据当前目标位置和相同弹道积分器求近似低弧解，暂未加入移动目标提前量。散布仍使用带种子的随机发射角，保持回放可复现。
+
+## wows_shell 参考计算器（实验性）
+
+`third_party/wows_shell/` 保留 jcw780/wows_shell 的原始 MIT 授权头文件和许可证（来源：`master` 分支）；`battle/WowsShellAdapter.h/.cpp` 用独立接口演示对其弹道计算的调用。对应的 `WowsShellCheck` 测试通过 CTest 注册。
+
+此 PR **不改变** `ProjectileSystem`、场景弹丸、随机散布或默认物理模型；适配器不进入实时战斗循环。可生成不同仰角下的射程、时间、末速、基础穿深样本，为之后的数值比较、火控表和穿甲规则替换提供入口。
+
+`wows_shell` 的穿深/Krupp、Sigma/散布、引信/跳弹规则仍保留在原始库中，但**没有启用装甲判定**；当前战斗碰撞结算照旧。其游戏时间倍率不用于适配器输出（直接读取真实秒数 `timeToTarget`）。原库的空气动力学/弹道尺度是 WoWS 模型，并不自动等于真实海战弹道模型。详情见 `third_party/wows_shell/INTEGRATION.md`。
+
+```powershell
+cmake --build build --config Release --target WowsShellCheck
+ctest --test-dir build -C Release --output-on-failure -R WowsShellCheck
+```
