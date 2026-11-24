@@ -4,6 +4,7 @@
       "model_file": "020528.dmuShip",
       "gun": {
         "arc": "low",
+        "compensate_ship_motion": true,
         "min_elevation_deg": -5,
         "max_elevation_deg": 85
       }

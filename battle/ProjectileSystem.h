@@ -18,6 +18,7 @@ enum class FireControlStatus {
 };
 struct FireControlSolution {
     std::optional<double> elevation;
+    std::optional<double> flightSeconds;
     FireArc selectedArc = FireArc::Low;
     FireControlStatus status = FireControlStatus::InvalidTarget;
 };

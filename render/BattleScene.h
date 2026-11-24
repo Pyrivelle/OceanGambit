@@ -27,6 +27,7 @@ public:
     void advance(double now);
     void setControlledShip(ShipID ship);
     void requestPlayerShot(ShipID ship, const osg::Vec3d& target);
+    void requestPlayerFreeShot(ShipID ship, const osg::Vec3d& direction);
     bool oceanReady() const;
     SceneStatus status() const;
     std::optional<std::string> shipModelPath(ShipID id) const;

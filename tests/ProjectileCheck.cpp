@@ -95,6 +95,10 @@ int main() {
     ProjectileSystem solver(doubleArc);
     const auto lowArc = solver.solveElevation(1000, 0, FireArc::Low, 0.0, 1.565);
     const auto highArc = solver.solveElevation(1000, 0, FireArc::High, 0.0, 1.565);
+    const auto highDetail = solver.fireControlSolution(1000, 0, FireArc::High, 0.0, 1.565);
+    const auto lowDetail = solver.fireControlSolution(1000, 0, FireArc::Low, 0.0, 1.565);
+    const bool arcTiming = highDetail.flightSeconds && lowDetail.flightSeconds &&
+        *highDetail.flightSeconds > *lowDetail.flightSeconds;
     const bool twoArcs = lowArc && highArc && *lowArc < *highArc &&
         *lowArc < .1 && *highArc > 1.4 &&
         std::abs(*lowArc + *highArc - 1.5707963267948966) < .02;
@@ -134,7 +138,7 @@ int main() {
               << " inverse_legacy=" << inverseLegacy
               << " inverse_wows=" << inverseWows
               << " unreachable=" << unreachable << " two_arcs=" << twoArcs
-              << " restricted=" << restricted << " no_long_range=" << noLongRange
+              << " arc_timing=" << arcTiming << " restricted=" << restricted << " no_long_range=" << noLongRange
               << " elevation_limit=" << elevationLimit << " invalid=" << invalid << '\n';
-    return arc && damping && replay && singleContact && quadraticDrag && quadraticReplay && aim && inverseLegacy && inverseWows && unreachable && twoArcs && restricted && noLongRange && elevationLimit && invalid ? 0 : 1;
+    return arc && damping && replay && singleContact && quadraticDrag && quadraticReplay && aim && inverseLegacy && inverseWows && unreachable && twoArcs && arcTiming && restricted && noLongRange && elevationLimit && invalid ? 0 : 1;
 }

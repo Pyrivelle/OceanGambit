@@ -161,7 +161,7 @@ private:
                 if (const auto target = scene_.pickTarget(ray, shooter))
                     scene_.requestPlayerShot(shooter, target->point);
                 else
-                    std::cout << "fire_control: no target under reticle\\n";
+                    scene_.requestPlayerFreeShot(shooter, ray.direction);
             }
             return;
         }

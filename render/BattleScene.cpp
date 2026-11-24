@@ -10,6 +10,7 @@
 #include <osgUtil/IntersectionVisitor>
 #include <osgUtil/LineSegmentIntersector>
 
+#include <algorithm>
 #include <cmath>
 #include <iomanip>
 #include <iostream>
@@ -53,57 +54,97 @@ struct BattleScene::Impl {
             if (const auto cue = scenario_.nextShot(time)) {
                 if (!playerControlled_ || cue->from != controlledShip_) launch(*cue, time);
             }
-            for (const auto& request : playerRequests_)
-                launchPlayer(request.ship, request.target, time);
+            for (const auto& request : playerRequests_) {
+                if (request.free) launchFree(request.ship, request.target, time);
+                else launchPlayer(request.ship, request.target, time);
+            }
             playerRequests_.clear();
         }
         effects_.advance(now);
+    }
+
+    osg::Vec3d shipMotion(ShipID source, double time) const {
+        const auto prev = scenario_.poses(time - ProjectileSystem::interval).at(source);
+        const auto pose = scenario_.poses(time).at(source);
+        return {(pose.x - prev.x) / ProjectileSystem::interval,
+                (pose.y - prev.y) / ProjectileSystem::interval, 0};
+    }
+
+    static osg::Vec3d boundedDirection(osg::Vec3d direction,
+                                      const ShipWeaponSettings& gun) {
+        if (direction.normalize() == 0) return {0, 1, 0};
+        const double yaw = std::atan2(direction.y(), direction.x());
+        const double elevation = std::clamp(
+            std::atan2(direction.z(), std::hypot(direction.x(), direction.y())),
+            gun.minElevationRad(), gun.maxElevationRad());
+        return {std::cos(yaw) * std::cos(elevation),
+                std::sin(yaw) * std::cos(elevation), std::sin(elevation)};
     }
 
     void launch(const ShotCue& cue, double time) {
         const auto poses = scenario_.poses(time);
         const auto& target = poses.at(cue.to);
         const osg::Vec3d targetPoint(target.x, target.y, 3.8);
-        // First pose provides the current muzzle origin; use it to estimate elevation.
-        const auto initial = ships_.ship(cue.from).poseTurret(targetPoint);
-        osg::Vec3d horizontal = targetPoint - initial.position;
-        horizontal.z() = 0;
-        const double range = horizontal.length();
-        if (range > 0) horizontal /= range;
-        horizontal = osg::Matrix::transform3x3(horizontal,
-            osg::Matrix::rotate(cue.yawOffset, 0, 0, 1));
+        auto& ship = ships_.ship(cue.from);
         const auto gun = gunSettings_.at(cue.from);
-        const auto solution = projectiles_.fireControlSolution(
-            range, targetPoint.z() - initial.position.z(),
-            gun.arc, gun.minElevationRad(), gun.maxElevationRad());
-        if (!solution.elevation) {
-            std::cerr << "Fire control AI: " << fireControlStatusName(solution.status)
-                      << " ship=" << cue.from + 1 << " range=" << range << '\n';
-            return;
+        const auto motion = gun.compensateShipMotion ? shipMotion(cue.from, time)
+                                                     : osg::Vec3d{};
+        auto muzzle = ship.poseTurret(targetPoint);
+        double flight = (targetPoint - muzzle.position).length() /
+                        projectiles_.ammo().launchPace;
+        bool fallback = false;
+        for (int iteration = 0; iteration < 6; ++iteration) {
+            const osg::Vec3d adjusted = targetPoint - motion * flight;
+            osg::Vec3d horizontal = adjusted - muzzle.position;
+            horizontal.z() = 0;
+            const double range = horizontal.length();
+            if (range < 1e-3) return;
+            horizontal /= range;
+            horizontal = osg::Matrix::transform3x3(horizontal,
+                osg::Matrix::rotate(cue.yawOffset, 0, 0, 1));
+            const auto solution = projectiles_.fireControlSolution(
+                range, adjusted.z() - muzzle.position.z(),
+                gun.arc, gun.minElevationRad(), gun.maxElevationRad());
+            if (!solution.elevation) {
+                std::cerr << "Fire control AI: " << fireControlStatusName(solution.status)
+                          << " ship=" << cue.from + 1 << " range=" << range << '\n';
+                return;
+            }
+            fallback = solution.status == FireControlStatus::FallbackLow;
+            const auto direction = horizontal * std::cos(*solution.elevation) +
+                osg::Vec3d(0, 0, std::sin(*solution.elevation));
+            const auto next = ship.poseTurretDirection(boundedDirection(direction, gun));
+            const double nextFlight = solution.flightSeconds.value_or(flight);
+            const double delta = (next.position - muzzle.position).length();
+            const double flightDelta = std::abs(nextFlight - flight);
+            muzzle = next;
+            flight = nextFlight;
+            if (delta < 1e-4 && flightDelta < .001) break;
         }
-        if (solution.status == FireControlStatus::FallbackLow)
+        if (fallback)
             std::cout << "Fire control AI: high arc unavailable, using low arc ship="
-                      << cue.from + 1 << " range=" << range << '\n';
-        const double elevation = *solution.elevation;
-        const osg::Vec3d aimPoint = initial.position + horizontal * range +
-            osg::Vec3d(0, 0, std::tan(elevation) * range);
-        const auto muzzle = ships_.ship(cue.from).poseTurret(aimPoint);
+                      << cue.from + 1 << '\n';
         spawn(cue.from, muzzle, time);
     }
 
-    // Aim from the physical muzzle, not from the camera's bridge/eye point.
-    // Barrel rotation can move the muzzle, so iteratively re-evaluate its
-    // world origin before solving the low-arc launch elevation.
+    // Aim from the physical muzzle; account for turret-induced displacement.
     void launchPlayer(ShipID source, const osg::Vec3d& target, double time) {
         if (source >= ships_.count()) return;
         auto& ship = ships_.ship(source);
         const auto gun = gunSettings_.at(source);
         MuzzlePose muzzle = ship.poseTurret(target);
         double elevation = 0;
+        double flight = (target - muzzle.position).length() /
+                        projectiles_.ammo().launchPace;
+        const auto motion = gun.compensateShipMotion ? shipMotion(source, time)
+                                                     : osg::Vec3d{};
         FireControlStatus status = FireControlStatus::Ready;
         FireArc chosenArc = gun.arc;
-        for (int i = 0; i < 5; ++i) {
-            osg::Vec3d horizontal = target - muzzle.position;
+        for (int i = 0; i < 6; ++i) {
+            // Use solved flight time to correct for inherited platform motion,
+            // while the live projectile physics remains unchanged.
+            const osg::Vec3d predictedPoint = target - motion * flight;
+            osg::Vec3d horizontal = predictedPoint - muzzle.position;
             horizontal.z() = 0;
             const double range = horizontal.length();
             if (range < 1e-3) {
@@ -111,7 +152,7 @@ struct BattleScene::Impl {
                 return;
             }
             const auto solution = projectiles_.fireControlSolution(
-                range, target.z() - muzzle.position.z(),
+                range, predictedPoint.z() - muzzle.position.z(),
                 gun.arc, gun.minElevationRad(), gun.maxElevationRad());
             if (!solution.elevation) {
                 std::cerr << "Fire control: " << fireControlStatusName(solution.status)
@@ -126,14 +167,19 @@ struct BattleScene::Impl {
             horizontal /= range;
             const osg::Vec3d direction =
                 horizontal * std::cos(elevation) + osg::Vec3d(0, 0, std::sin(elevation));
-            const auto next = ship.poseTurretDirection(direction);
+            const auto next = ship.poseTurretDirection(boundedDirection(direction, gun));
+            const double nextFlight = solution.flightSeconds.value_or(flight);
             const double delta = (next.position - muzzle.position).length();
+            const double flightDelta = std::abs(nextFlight - flight);
             muzzle = next;
-            if (delta < 1e-5) break;
+            flight = nextFlight;
+            if (delta < 1e-4 && flightDelta < .001) break;
         }
         std::cout << "fire_control ship=" << source + 1
                   << " arc=" << (chosenArc == FireArc::High ? "high" : "low")
                   << " status=" << fireControlStatusName(status)
+                  << " motion_compensation=" << (gun.compensateShipMotion ? "on" : "off")
+                  << " flight_seconds=" << flight
                   << " elevation_deg=" << elevation * (180.0 / 3.14159265358979323846)
                   << " target=(" << target.x() << ',' << target.y() << ',' << target.z()
                   << ") muzzle=(" << muzzle.position.x() << ','
@@ -141,14 +187,24 @@ struct BattleScene::Impl {
         spawn(source, muzzle, time);
     }
 
+    void launchFree(ShipID source, const osg::Vec3d& viewDirection, double time) {
+        if (source >= ships_.count()) return;
+        const auto& gun = gunSettings_.at(source);
+        auto constrained = boundedDirection(viewDirection, gun);
+        const double actual = std::atan2(constrained.z(),
+                                         std::hypot(constrained.x(), constrained.y()));
+        auto muzzle = ships_.ship(source).poseTurretDirection(constrained);
+        std::cout << "fire_control ship=" << source + 1
+                  << " mode=free elevation_deg=" << actual * (180.0 / 3.14159265358979323846)
+                  << " motion_compensation=not_applicable" << '\n';
+        spawn(source, muzzle, time);
+    }
+
     void spawn(ShipID source, const MuzzlePose& muzzle, double time) {
         const unsigned id = ++projectileId_;
         ++launchCounts_.at(source);
-        const auto previous = scenario_.poses(time - ProjectileSystem::interval).at(source);
-        const auto current = scenario_.poses(time).at(source);
-        const osg::Vec3d motion((current.x - previous.x) / ProjectileSystem::interval,
-                               (current.y - previous.y) / ProjectileSystem::interval, 0);
-        projectiles_.launch(id, source, muzzle.position, muzzle.forward, motion);
+        projectiles_.launch(id, source, muzzle.position, muzzle.forward,
+                            shipMotion(source, time));
         effects_.launch(id, muzzle, time);
         logProjectile(time, id, source, "launch", muzzle.position);
     }
@@ -211,7 +267,7 @@ struct BattleScene::Impl {
     std::vector<ShipWeaponSettings> gunSettings_;
     bool playerControlled_;
     ShipID controlledShip_ = 0;
-    struct PlayerShot { ShipID ship; osg::Vec3d target; };
+    struct PlayerShot { ShipID ship; osg::Vec3d target; bool free = false; };
     unsigned tick_ = 0;
     unsigned projectileId_ = 0;
     std::array<unsigned, 2> launchCounts_{};
@@ -234,6 +290,13 @@ void BattleScene::requestPlayerShot(ShipID ship, const osg::Vec3d& target) {
         ship < impl_->ships_.count() &&
         std::isfinite(target.x()) && std::isfinite(target.y()) && std::isfinite(target.z()))
         impl_->playerRequests_.push_back({ship, target});
+}
+void BattleScene::requestPlayerFreeShot(ShipID ship, const osg::Vec3d& direction) {
+    if (impl_->playerControlled_ && ship == impl_->controlledShip_ &&
+        ship < impl_->ships_.count() &&
+        std::isfinite(direction.x()) && std::isfinite(direction.y()) &&
+        std::isfinite(direction.z()) && direction.length2() > 1e-12)
+        impl_->playerRequests_.push_back({ship, direction, true});
 }
 bool BattleScene::oceanReady() const { return impl_->ocean_->isInitialized(); }
 SceneStatus BattleScene::status() const { return impl_->status(); }

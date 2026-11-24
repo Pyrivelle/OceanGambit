@@ -184,6 +184,22 @@ FireControlSolution ProjectileSystem::fireControlSolution(
         result.selectedArc = useHigh ? FireArc::High : FireArc::Low;
         result.elevation = refine(useHigh ? brackets.back() : brackets.front());
         if (result.elevation) {
+            // Return actual flight time from the very same trajectory stepper,
+            // not range / muzzle-speed (inaccurate on high trajectories).
+            osg::Vec3d p(0, 0, 0);
+            osg::Vec3d v(ammo_.launchPace * std::cos(*result.elevation), 0,
+                         ammo_.launchPace * std::sin(*result.elevation));
+            ocean_gambit::ballistics::MotionHistory flightHistory;
+            const int maxSteps = static_cast<int>(std::ceil(ammo_.lifetime / interval));
+            for (int k = 0; k < maxSteps; ++k) {
+                const double oldX = p.x();
+                integrate(p, v, flightHistory);
+                if (p.x() >= horizontalRange && p.x() > oldX) {
+                    result.flightSeconds = interval * (k +
+                        (horizontalRange - oldX) / (p.x() - oldX));
+                    break;
+                }
+            }
             result.status = preferred == FireArc::High && !highAvailable
                 ? FireControlStatus::FallbackLow : FireControlStatus::Ready;
             return result;

@@ -36,6 +36,8 @@ ShipWeaponSettings loadShipWeaponSettings(const std::string& modelPath) {
         else if (requested != "low")
             std::cerr << "Unknown gun arc for " << model.toStdString() << ": "
                       << requested.toStdString() << "; using low arc\n";
+        settings.compensateShipMotion =
+            gun.value("compensate_ship_motion").toBool(settings.compensateShipMotion);
         const auto min = gun.value("min_elevation_deg").toDouble(settings.minElevationDeg);
         const auto max = gun.value("max_elevation_deg").toDouble(settings.maxElevationDeg);
         if (min > -89.0 && max < 89.0 && min < max) {

@@ -6,6 +6,7 @@
 // Gun-arc preference belongs to the ship/weapon definition, not the camera.
 struct ShipWeaponSettings {
     FireArc arc = FireArc::Low;
+    bool compensateShipMotion = true;
     double minElevationDeg = -5.0;
     double maxElevationDeg = 85.0;
     double minElevationRad() const { return minElevationDeg * 0.017453292519943295; }
