@@ -1,4 +1,5 @@
 #include "ShipController.h"
+#include "ShipSelection.h"
 #include "InfraredPreview.h"
 
 #include <QCoreApplication>
@@ -59,8 +60,9 @@ osg::Matrixd toShipWorld(const osg::Node& node, const osg::Node& placement) {
 }
 }
 
-ShipController::ShipController(const ShipDefinition& definition, const std::string& modelPath)
-    : modelPath_(modelPath), views_(definition.views) {
+ShipController::ShipController(std::shared_ptr<const ShipDefinition> shipDefinition, const std::string& modelPath)
+    : modelPath_(modelPath), definition_(std::move(shipDefinition)) {
+    const auto& definition = *definition_;
     auto loaded = loadShip(modelPath);
     auto* raw = loaded->asGroup();
     if (!raw || !raw->getNumChildren())
@@ -79,7 +81,7 @@ ShipController::ShipController(const ShipDefinition& definition, const std::stri
         return path;
     };
     bridge_ = physicalPath(definition.bridge).back();
-    for (const auto& view : views_)
+    for (const auto& view : definition.views)
         if (view.node) NodeController::resolve(*raw, *view.node, definition.code);
 
     // Resolve all index paths before adding any wrappers or moving sibling nodes.
@@ -209,7 +211,7 @@ MuzzlePose ShipController::muzzlePose(size_t turret, size_t barrel) const {
 }
 
 std::optional<osg::Vec3d> ShipController::viewEye(const std::string& id) const {
-    for (const auto& view : views_)
+    for (const auto& view : definition_->views)
         if (view.id == id) return view.eye;
     return std::nullopt;
 }
@@ -243,7 +245,10 @@ void ShipController::setBridgeHidden(bool hidden) {
     }
 }
 
-void ShipController::place(double x, double y, double heading) {
-    placement_->setMatrix(osg::Matrix::rotate(heading, 0, 0, 1) *
-                         osg::Matrix::translate(x, y, 0));
+void ShipController::setSelectionVisible(bool visible) {
+    if (visible && !selectionRing_) {
+        selectionRing_ = createShipSelectionRing(model_->getBound());
+        placement_->addChild(selectionRing_);
+    }
+    if (selectionRing_) selectionRing_->setNodeMask(visible ? ~0u : 0u);
 }

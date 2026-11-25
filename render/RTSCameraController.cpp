@@ -27,11 +27,18 @@ osg::Matrixd RTSCameraController::projectionMatrix(double aspect) const {
     return osg::Matrixd::perspective(config_.verticalFov, aspect, .15, 20000);
 }
 
-std::optional<osg::Vec3d> RTSCameraController::seaPoint(const osg::Vec2d& ndc, double aspect) const {
+std::optional<std::pair<osg::Vec3d, osg::Vec3d>> RTSCameraController::screenSegment(
+    const osg::Vec2d& ndc, double aspect) const {
     osg::Matrixd inverse;
     if (aspect <= 0 || !inverse.invert(viewMatrix() * projectionMatrix(aspect))) return std::nullopt;
-    const auto near = osg::Vec3d(ndc.x(), ndc.y(), -1) * inverse;
-    const auto far = osg::Vec3d(ndc.x(), ndc.y(), 1) * inverse;
+    return std::make_pair(osg::Vec3d(ndc.x(), ndc.y(), -1) * inverse,
+                          osg::Vec3d(ndc.x(), ndc.y(), 1) * inverse);
+}
+
+std::optional<osg::Vec3d> RTSCameraController::seaPoint(const osg::Vec2d& ndc, double aspect) const {
+    const auto segment = screenSegment(ndc, aspect);
+    if (!segment) return std::nullopt;
+    const auto& [near, far] = *segment;
     const auto ray = far - near;
     if (ray.z() >= -1e-8) return std::nullopt;
     const double fraction = -near.z() / ray.z();

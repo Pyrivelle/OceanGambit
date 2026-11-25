@@ -14,6 +14,7 @@
 #include <QImage>
 #include <QOpenGLFunctions>
 #include <QOpenGLWidget>
+#include <QRubberBand>
 #include <QTimer>
 #include <QWheelEvent>
 #include <osgViewer/Viewer>
@@ -42,14 +43,17 @@ public:
           mode_(rtsCheck ? CameraMode::RTS : (cameraCheck ? CameraMode::Follow :
                 ((overview || check) ? CameraMode::Overview : follow ? CameraMode::Follow : CameraMode::RTS))),
           rts_(rtsConfig(edgeScroll)),
-          scene_(viewer_, moving, quadratic, wows, integrator, followMode()) {
+          scene_(viewer_, moving, quadratic, wows, integrator, followMode(),
+                 mode_ != CameraMode::Overview && !cameraCheck_) {
         viewer_.setThreadingModel(osgViewer::Viewer::SingleThreaded);
-        setWindowTitle("OceanGambit | 020528 x2 | Triton");
+        setWindowTitle("OceanGambit | Triton");
         if (mode_ != CameraMode::Overview) {
             cameraSettings_ = loadShipCameraSettings(scene_.shipModelPath(0).value(), scene_.shipBridgeEye(0));
             shipCamera_.follow(0, cameraSettings_);
             setFocusPolicy(Qt::StrongFocus);
             setMouseTracking(true);
+            selectionBox_ = new QRubberBand(QRubberBand::Rectangle, this);
+            selectionBox_->setAttribute(Qt::WA_TransparentForMouseEvents);
             reticle_ = new QLabel("+", this);
             reticle_->setFixedSize(24, 24);
             reticle_->setAlignment(Qt::AlignCenter);
@@ -57,6 +61,7 @@ public:
             reticle_->setStyleSheet("color: white; background: transparent; font: bold 19px;");
             reticle_->setVisible(followMode());
         }
+        scene_.setRtsMovementEnabled(rtsMode());
         resize(1200, 740);
         QObject::connect(&timer_, &QTimer::timeout, this, [this] { update(); });
         timer_.start(16);
@@ -91,9 +96,42 @@ private:
             mode_ = CameraMode::Follow;
             shipCamera_.follow(shipCamera_.followedShip(), cameraSettings_);
         }
+        cancelSelectionDrag();
+        scene_.showShipSelection(rtsMode() ? selectedShips_ : std::vector<EntityID>{});
         reticle_->setVisible(followMode());
+        scene_.setRtsMovementEnabled(rtsMode());
         scene_.setPlayerControlEnabled(followMode());
         if (followMode()) scene_.setControlledShip(shipCamera_.followedShip());
+    }
+
+    void cancelSelectionDrag() {
+        selectionStart_.reset();
+        if (selectionBox_) selectionBox_->hide();
+    }
+
+    QRect selectionRect(const QPoint& end) const {
+        return QRect(*selectionStart_, end).normalized().intersected(rect());
+    }
+
+    void finishSelectionDrag(const QPoint& end) {
+        const auto box = selectionRect(end);
+        const bool isDrag = (end - *selectionStart_).manhattanLength() >= QApplication::startDragDistance();
+        cancelSelectionDrag();
+        if (isDrag && !box.isEmpty() && width() > 0 && height() > 0) {
+            const double aspect = aspectRatio();
+            selectedShips_ = scene_.shipsInScreenBox(
+                {ndc(box.topLeft()), ndc(box.bottomRight())},
+                rts_.viewMatrix() * rts_.projectionMatrix(aspect));
+        } else {
+            selectedShips_.clear();
+            if (!isDrag && rect().contains(end) && width() > 0 && height() > 0) {
+                if (const auto ray = rts_.screenSegment(ndc(end), aspectRatio())) {
+                    if (const auto ship = scene_.pickOwnShip(ray->first, ray->second))
+                        selectedShips_.push_back(*ship);
+                }
+            }
+        }
+        scene_.showShipSelection(selectedShips_);
     }
 
     bool looking() const {
@@ -189,6 +227,7 @@ private:
 
     void focusOutEvent(QFocusEvent* event) override {
         if (rtsMode()) {
+            cancelSelectionDrag();
             rtsDragButton_ = Qt::NoButton;
             rts_.stopZoom();
         }
@@ -201,7 +240,21 @@ private:
     }
 
     void mousePressEvent(QMouseEvent* event) override {
-        if (rtsMode() && rtsDragButton_ == Qt::NoButton &&
+        if (rtsMode() && !selectionStart_ && rtsDragButton_ == Qt::NoButton &&
+            event->button() == Qt::RightButton && width() > 0 && height() > 0) {
+            if (const auto sea = rts_.seaPoint(ndc(event->localPos()), aspectRatio()))
+                scene_.requestMove(selectedShips_, *sea);
+            event->accept();
+            return;
+        }
+        if (rtsMode() && !selectionStart_ && rtsDragButton_ == Qt::NoButton &&
+            event->button() == Qt::LeftButton && event->modifiers() == Qt::NoModifier) {
+            selectionStart_ = event->pos();
+            rts_.stopZoom();
+            event->accept();
+            return;
+        }
+        if (rtsMode() && !selectionStart_ && rtsDragButton_ == Qt::NoButton &&
             (event->button() == Qt::MiddleButton ||
              (event->button() == Qt::LeftButton && event->modifiers().testFlag(Qt::AltModifier)))) {
             rtsDragButton_ = event->button();
@@ -234,6 +287,11 @@ private:
     }
 
     void mouseReleaseEvent(QMouseEvent* event) override {
+        if (rtsMode() && selectionStart_ && event->button() == Qt::LeftButton) {
+            finishSelectionDrag(event->pos());
+            event->accept();
+            return;
+        }
         if (rtsMode() && event->button() == rtsDragButton_) {
             rtsDragButton_ = Qt::NoButton;
             event->accept();
@@ -248,6 +306,19 @@ private:
     }
 
     void mouseMoveEvent(QMouseEvent* event) override {
+        if (rtsMode() && selectionStart_ && event->buttons().testFlag(Qt::LeftButton)) {
+            const auto box = selectionRect(event->pos());
+            const bool dragging =
+                (event->pos() - *selectionStart_).manhattanLength() >= QApplication::startDragDistance();
+            if (dragging && !box.isEmpty()) {
+                selectionBox_->setGeometry(box);
+                selectionBox_->show();
+            } else {
+                selectionBox_->hide();
+            }
+            event->accept();
+            return;
+        }
         if (rtsMode() && rtsDragButton_ != Qt::NoButton && event->buttons().testFlag(rtsDragButton_) &&
             width() > 0 && height() > 0) {
             const auto point = event->localPos();
@@ -273,7 +344,7 @@ private:
     }
 
     void wheelEvent(QWheelEvent* event) override {
-        if (rtsMode() && rtsDragButton_ == Qt::NoButton && width() > 0 && height() > 0) {
+        if (rtsMode() && !selectionStart_ && rtsDragButton_ == Qt::NoButton && width() > 0 && height() > 0) {
             const double notches = event->angleDelta().y() != 0 ?
                 event->angleDelta().y() / 120.0 : event->pixelDelta().y() / 40.0;
             if (notches != 0) {
@@ -294,7 +365,7 @@ private:
         const double dt = now - rtsFrameTime_;
         rtsFrameTime_ = now;
         rts_.advance(dt, aspect);
-        if (rtsDragButton_ == Qt::NoButton && !rtsCheck_ && isActiveWindow() && hasFocus()) {
+        if (rtsDragButton_ == Qt::NoButton && !selectionStart_ && !rtsCheck_ && isActiveWindow() && hasFocus()) {
             const auto pointer = mapFromGlobal(QCursor::pos());
             rts_.scrollAtEdge({double(pointer.x()), double(pointer.y())},
                               {double(width()), double(height())}, dt);
@@ -302,6 +373,48 @@ private:
         auto& camera = *viewer_.getCamera();
         camera.setViewMatrix(rts_.viewMatrix());
         camera.setProjectionMatrix(rts_.projectionMatrix(aspect));
+    }
+
+    bool verifySelection() {
+        const auto drag = [this](const QPoint& from, const QPoint& to) {
+            QMouseEvent press(QEvent::MouseButtonPress, QPointF(from),
+                              Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            QMouseEvent move(QEvent::MouseMove, QPointF(to),
+                             Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+            QMouseEvent release(QEvent::MouseButtonRelease, QPointF(to),
+                                Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+            QApplication::sendEvent(this, &press);
+            QApplication::sendEvent(this, &move);
+            const bool boxVisible = selectionBox_->isVisible() &&
+                selectionBox_->geometry() == QRect(from, to).normalized().intersected(rect());
+            QApplication::sendEvent(this, &release);
+            return boxVisible && selectionBox_->isHidden();
+        };
+        const bool allFirst = drag(rect().topLeft(), rect().bottomRight()) && selectedShips_.size() == 3;
+        const auto allIds = selectedShips_;
+        const bool partial = drag(rect().bottomRight(), {width() * 6 / 10, 0}) &&
+            allFirst && selectedShips_ == std::vector<EntityID>{allIds.back()};
+        const bool cleared = drag({1, 1}, {40, 40}) && selectedShips_.empty();
+
+        const auto click = [this](ShipID slot) {
+            const auto point = scene_.shipTransform(slot).value().getTrans() + osg::Vec3d(0, 0, 6);
+            const auto projected = point * (rts_.viewMatrix() * rts_.projectionMatrix(aspectRatio()));
+            const QPointF pixel((projected.x() + 1) * width() / 2,
+                                (1 - projected.y()) * height() / 2);
+            QMouseEvent press(QEvent::MouseButtonPress, pixel, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            QMouseEvent release(QEvent::MouseButtonRelease, pixel, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+            QApplication::sendEvent(this, &press);
+            QApplication::sendEvent(this, &release);
+        };
+        click(0);
+        const bool ownClick = allFirst && selectedShips_ == std::vector<EntityID>{allIds.front()};
+        click(1);
+        const bool enemyIgnored = selectedShips_.empty();
+        const bool all = allFirst && drag(rect().topLeft(), rect().bottomRight()) && selectedShips_ == allIds;
+        std::cout << "selection_partial=" << partial << " selection_clear=" << cleared
+                  << " selection_own=" << all << " selection_click=" << ownClick
+                  << " enemy_ignored=" << enemyIgnored << std::endl;
+        return partial && cleared && all && ownClick && enemyIgnored;
     }
 
     bool verifyRTSHost() {
@@ -503,14 +616,33 @@ private:
         viewer_.renderingTraversals();
 
         if (rtsCheck_) {
-            if (frame_++ == 2) {
+            if (frame_ == 2) {
                 capture("camera-rts.png");
+                const auto initial = rts_;
                 const bool math = verifyRTSCamera();
                 const bool host = verifyRTSHost();
-                const bool ok = math && host && scene_.oceanReady();
+                rts_ = initial;
+                const bool selection = verifySelection();
+                rtsCheckPassed_ = math && host && selection && scene_.oceanReady();
+                beforeMove_ = scene_.shipTransform(0).value();
+                stillEnemy_ = scene_.shipTransform(1).value();
+                QMouseEvent moveOrder(QEvent::MouseButtonPress, QPointF(rect().center()),
+                                      Qt::RightButton, Qt::RightButton, Qt::NoModifier);
+                QApplication::sendEvent(this, &moveOrder);
+            } else if (frame_ == 4) {
+                capture("camera-rts-selected.png");
+            } else if (frame_ == 45) {
+                const auto moved = scene_.shipTransform(0).value();
+                const bool playerMoved = (moved.getTrans() - beforeMove_.getTrans()).length() > .3;
+                const bool enemyStill = scene_.shipTransform(1).value() == stillEnemy_;
+                const bool isolated = scene_.status().launches == std::array<unsigned, 2>{0, 0};
+                const bool ok = rtsCheckPassed_ && playerMoved && enemyStill && isolated;
+                std::cout << "move_command=" << playerMoved << " enemy_stationary=" << enemyStill
+                          << " legacy_script_isolated=" << isolated << std::endl;
                 std::cout << "rts_camera_result=" << (ok ? "PASS" : "FAIL") << std::endl;
                 QTimer::singleShot(0, this, [ok] { QApplication::exit(ok ? 0 : 1); });
             }
+            ++frame_;
             return;
         }
 
@@ -598,10 +730,15 @@ private:
     bool check_;
     bool cameraCheck_;
     bool rtsCheck_;
+    bool rtsCheckPassed_ = false;
+    osg::Matrixd beforeMove_, stillEnemy_;
     CameraMode mode_;
     RTSCameraController rts_;
     Qt::MouseButton rtsDragButton_ = Qt::NoButton;
     QPointF rtsPrevious_;
+    QRubberBand* selectionBox_ = nullptr;
+    std::optional<QPoint> selectionStart_;
+    std::vector<EntityID> selectedShips_;
     double rtsFrameTime_ = 0;
     bool cameraCheckPassed_ = false;
     osg::Vec3d cameraProbeOrigin_;

@@ -5,6 +5,7 @@
 #include <osg/Vec3d>
 
 #include <optional>
+#include <utility>
 
 struct RTSCameraState {
     osg::Vec3d target;
@@ -35,6 +36,8 @@ public:
     const RTSCameraState& state() const { return state_; }
     osg::Matrixd viewMatrix() const;
     osg::Matrixd projectionMatrix(double aspect) const;
+    std::optional<std::pair<osg::Vec3d, osg::Vec3d>> screenSegment(
+        const osg::Vec2d& ndc, double aspect) const;
     std::optional<osg::Vec3d> seaPoint(const osg::Vec2d& ndc, double aspect) const;
     void pan(const osg::Vec2d& from, const osg::Vec2d& to, double aspect);
     void rotate(double dx, double dy);

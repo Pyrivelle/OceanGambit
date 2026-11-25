@@ -24,6 +24,9 @@ $env:OCEAN_CAPTURE_DIR = "$PWD/build/captures-moving"
 
 | 输入 | 操作 |
 | --- | --- |
+| 左键单击 | 选中己方舰船，点空处清空 |
+| 左键拖动 | 框选投影中心落在框内的己方舰船 |
+| 右键点击海面 | 让选中的己方舰船驶往该点，绿色圆环短暂标记目的地 |
 | 中键拖动 | 以鼠标下的海面点拖动战场 |
 | 鼠标移到窗口边缘 | 边缘滚屏，角落支持对角移动 |
 | 鼠标滚轮 | 向前拉远、向后靠近，保持鼠标下的海面点 |
@@ -31,9 +34,9 @@ $env:OCEAN_CAPTURE_DIR = "$PWD/build/captures-moving"
 | Home | 恢复正北和默认俯角，保留位置与缩放 |
 | F6 | 在 RTS 和舰船调试视角之间切换，返回时恢复 RTS 状态 |
 
-`--no-edge-scroll` 关闭边缘滚屏，`--follow` 直接进入舰船调试视角，`--overview` 使用原固定全景。RTS 模式下，普通左键和右键留给后续选择和命令交互，现有演示脚本继续运行。
+`--no-edge-scroll` 关闭边缘滚屏，`--follow` 直接进入舰船调试视角，`--overview` 使用原固定全景。默认 RTS 场景有六艘 020528，双方各三艘。选中舰船显示青色圆环。己方舰船独立航行，新的右键命令覆盖目的地。对方保持静止。RTS 模式停用旧自动射击脚本，`--overview` 和 `--check` 保留独立双舰演示。
 
-运行 `.\OpenOceanGambit.cmd --check-rts-camera` 验证海面锚点、俯角和距离边界、边缘滚屏、Home 以及模式往返。可设置 `OCEAN_CAPTURE_DIR` 保存 `camera-rts.png`。
+运行 `.\OpenOceanGambit.cmd --check-rts-camera` 验证海面锚点、俯角和距离边界、边缘滚屏、Home、模式往返、己方选择与右键航行。可设置 `OCEAN_CAPTURE_DIR` 保存 `camera-rts.png` 和 `camera-rts-selected.png`。
 
 ## 跟随相机与望远镜
 

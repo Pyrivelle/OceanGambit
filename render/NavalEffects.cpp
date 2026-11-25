@@ -25,7 +25,9 @@ void NavalEffects::contact(unsigned id, const std::optional<ProjectileContact>& 
 }
 
 void NavalEffects::markShip(unsigned target, const ProjectileContact& hit, double now) {
-    auto& ship = ships_.ship(target);
+    auto* targetShip = lookup_(target);
+    if (!targetShip || target >= decals_.size()) return;
+    auto& ship = *targetShip;
     const auto inverse = osg::Matrix::inverse(ship.node().getMatrix());
     const auto local = hit.position * inverse;
     const auto normal = osg::Matrix::transform3x3(hit.normal, inverse);
@@ -45,6 +47,8 @@ void NavalEffects::markShip(unsigned target, const ProjectileContact& hit, doubl
 }
 
 void NavalEffects::advance(double now) {
+    for (unsigned slot = 0; slot < decals_.size(); ++slot)
+        if (decals_[slot] && !lookup_(slot)) decals_[slot] = nullptr;
     for (auto it = flights_.begin(); it != flights_.end();) {
         auto& flight = it->second;
         flight.effects->sampleExternalFlight(now, flight.position);
@@ -62,9 +66,10 @@ void NavalEffects::advance(double now) {
 EffectsStatus NavalEffects::status() const {
     const auto matrix = markedMovingHull_.valid() ? markedMovingHull_->getWorldMatrices()
                                           : osg::MatrixList{};
-    const bool decalAttached = !matrix.empty() &&
+    const auto* ship = lookup_(1);
+    const bool decalAttached = ship && !matrix.empty() &&
         (matrix.front().getTrans() - markWorld_ -
-         (ships_.ship(1).node().getMatrix().getTrans() - markShipPosition_)).length() < 1e-6;
+         (ship->node().getMatrix().getTrans() - markShipPosition_)).length() < 1e-6;
     const bool moved = !matrix.empty() && (matrix.front().getTrans() - markWorld_).length() > .1;
     return {decalCounts_, visibleFlight_, visibleSplash_, decalAttached, moved, explosionsStarted_};
 }

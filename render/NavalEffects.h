@@ -1,11 +1,13 @@
 #pragma once
 
 #include "ImpactExplosion.h"
-#include "ShipManager.h"
+#include "ShipController.h"
 #include "NavalEffectsPreview.h"
 #include "../battle/ProjectileSystem.h"
 
 #include <array>
+#include <functional>
+#include <utility>
 #include <unordered_map>
 #include <vector>
 
@@ -17,8 +19,9 @@ struct EffectsStatus {
 
 class NavalEffects {
 public:
-    NavalEffects(osgViewer::Viewer& viewer, osg::Group& root, ShipManager& ships)
-        : viewer_(viewer), root_(root), ships_(ships) {}
+    using ShipLookup = std::function<ShipController*(unsigned)>;
+    NavalEffects(osgViewer::Viewer& viewer, osg::Group& root, ShipLookup lookup)
+        : viewer_(viewer), root_(root), lookup_(std::move(lookup)) {}
     void launch(unsigned id, const MuzzlePose& pose, double now);
     void sample(unsigned id, const osg::Vec3d& position, double now);
     void contact(unsigned id, const std::optional<ProjectileContact>& hit, double now);
@@ -35,7 +38,7 @@ private:
 
     osgViewer::Viewer& viewer_;
     osg::Group& root_;
-    ShipManager& ships_;
+    ShipLookup lookup_;
     std::unordered_map<unsigned, Flight> flights_;
     std::array<osg::ref_ptr<ShipDecals>, 2> decals_;
     std::vector<ImpactExplosion> explosions_;

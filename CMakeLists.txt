@@ -16,6 +16,8 @@ add_executable(OceanGambit
     app/ShipCameraSettings.cpp
     app/ShipWeaponSettings.cpp
     battle/DemoScenario.cpp
+    battle/EntityManager.cpp
+    battle/MovementTrait.cpp
     battle/ProjectileSystem.cpp
     render/BattleScene.cpp
     render/ImpactExplosion.cpp
@@ -25,6 +27,7 @@ add_executable(OceanGambit
     render/ShipDefinition.cpp
     render/ShipController.cpp
     render/ShipManager.cpp
+    render/ShipSelection.cpp
     render/SkyLoader.cpp
     render/ShipCameraController.cpp
     render/RTSCameraController.cpp
@@ -85,7 +88,7 @@ if(BUILD_TESTING)
 
     add_executable(NodeControllerCheck tests/NodeControllerCheck.cpp
         render/NodeController.cpp render/ShipController.cpp render/ShipDefinition.cpp
-        render/ShipManager.cpp app/LocalSettings.cpp external/InfraredPreview/InfraredPreview.cpp)
+        battle/EntityManager.cpp battle/MovementTrait.cpp render/ShipManager.cpp render/ShipSelection.cpp app/LocalSettings.cpp external/InfraredPreview/InfraredPreview.cpp)
     target_compile_features(NodeControllerCheck PRIVATE cxx_std_17)
     target_compile_definitions(NodeControllerCheck PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_include_directories(NodeControllerCheck PRIVATE ${OPENSCENEGRAPH_INCLUDE_DIRS} "${OPENGL_HEADERS}"

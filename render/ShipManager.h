@@ -4,16 +4,12 @@
 
 #include <unordered_map>
 
+// Ship asset factory. Scene attachment and instance identity belong to EntityManager.
 class ShipManager {
 public:
-    explicit ShipManager(osg::Group& root) : root_(root) {}
-    unsigned addShip(const std::string& code);
-    unsigned count() const { return static_cast<unsigned>(ships_.size()); }
-    ShipController& ship(unsigned id) { return *ships_.at(id); }
-    const ShipController& ship(unsigned id) const { return *ships_.at(id); }
+    EntityBuild build(const std::string& code);
+    std::unique_ptr<ShipController> create(const std::string& code);
 
 private:
-    osg::Group& root_;
-    std::unordered_map<std::string, ShipDefinition> definitions_;
-    std::vector<std::unique_ptr<ShipController>> ships_;
+    std::unordered_map<std::string, std::shared_ptr<const ShipDefinition>> definitions_;
 };
