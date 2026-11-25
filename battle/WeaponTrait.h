@@ -18,6 +18,7 @@ public:
     std::optional<std::uint64_t> target() const { return target_; }
     void track(std::optional<std::uint64_t> target) { target_ = target; }
     void fired(double now) { nextShotTime_ = now + tuning_.reloadSeconds; }
+    void retry(double now) { nextShotTime_ = now + 1.0; } // Avoid costly solver retries each tick.
 
 private:
     WeaponTuning tuning_;

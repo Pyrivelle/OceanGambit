@@ -133,15 +133,17 @@ struct BattleScene::Impl {
             if (!weapon.target() || !weapon.ready(now)) continue;
             const auto slot = std::find(battleShips_.begin(), battleShips_.end(), sourceId);
             if (slot == battleShips_.end()) continue;
-            launchAuto(static_cast<unsigned>(slot - battleShips_.begin()), *weapon.target(), now);
-            weapon.fired(now);
+            if (launchAuto(static_cast<unsigned>(slot - battleShips_.begin()), *weapon.target(), now))
+                weapon.fired(now);
+            else
+                weapon.retry(now);
         }
     }
 
-    void launchAuto(unsigned slot, EntityID targetId, double now) {
+    bool launchAuto(unsigned slot, EntityID targetId, double now) {
         auto* target = entities_.find(targetId);
         auto* source = battleEntity(slot);
-        if (!source || !target || target->lifecycle() != EntityLifecycle::Active) return;
+        if (!source || !target || target->lifecycle() != EntityLifecycle::Active) return false;
         osg::Vec3d aim = target->transform().position + osg::Vec3d(0, 0, 3.8);
         // First-order lead from target's current velocity and the existing ballistics
         // flight-time solver. The live fire-control solver handles shooter motion.
@@ -162,7 +164,7 @@ struct BattleScene::Impl {
                 range / std::max(1.0, projectiles_.ammo().launchPace));
             aim += velocity * flight;
         }
-        launchPlayer(slot, aim, now);
+        return launchPlayer(slot, aim, now);
     }
 
     void showMoveMarker(const osg::Vec3d& destination, double now) {
@@ -248,9 +250,9 @@ struct BattleScene::Impl {
     }
 
     // Aim from the physical muzzle; account for turret-induced displacement.
-    void launchPlayer(ShipID source, const osg::Vec3d& target, double time) {
+    bool launchPlayer(ShipID source, const osg::Vec3d& target, double time) {
         auto* active = findBattleShip(source);
-        if (!active) return;
+        if (!active) return false;
         auto& ship = *active;
         const auto gun = gunSettings_.at(source);
         MuzzlePose muzzle = ship.poseTurret(target);
@@ -270,7 +272,7 @@ struct BattleScene::Impl {
             const double range = horizontal.length();
             if (range < 1e-3) {
                 std::cerr << "Fire control: target is too close to muzzle\n";
-                return;
+                return false;
             }
             const auto solution = projectiles_.fireControlSolution(
                 range, predictedPoint.z() - muzzle.position.z(),
@@ -280,7 +282,7 @@ struct BattleScene::Impl {
                           << " ship=" << source + 1
                           << " range=" << range
                           << " height=" << target.z() - muzzle.position.z() << '\n';
-                return;
+                return false;
             }
             elevation = *solution.elevation;
             status = solution.status;
@@ -306,6 +308,7 @@ struct BattleScene::Impl {
                   << ") muzzle=(" << muzzle.position.x() << ','
                   << muzzle.position.y() << ',' << muzzle.position.z() << ")\n";
         spawn(source, muzzle, time);
+        return true;
     }
 
     void launchFree(ShipID source, const osg::Vec3d& viewDirection, double time) {

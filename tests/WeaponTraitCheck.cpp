@@ -12,6 +12,9 @@ int main() {
     gun.fired(0.5);
     assert(!gun.ready(4.49));
     assert(gun.ready(4.5));
+    gun.retry(4.5);
+    assert(!gun.ready(5.49));
+    assert(gun.ready(5.5));
     gun.track(std::nullopt);
     assert(!gun.target());
     return 0;
