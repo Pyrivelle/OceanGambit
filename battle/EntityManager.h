@@ -2,6 +2,7 @@
 
 #include <osg/MatrixTransform>
 #include "MovementTrait.h"
+#include "WeaponTrait.h"
 
 #include <cstdint>
 #include <functional>
@@ -31,6 +32,7 @@ public:
 struct EntityBuild {
     std::unique_ptr<EntityVisual> visual;
     std::optional<MovementTrait> movement;
+    std::optional<WeaponTrait> weapon;
 };
 
 class Entity {
@@ -46,6 +48,8 @@ public:
     const EntityVisual& visual() const { return *visual_; }
     MovementTrait* movement() { return movement_ ? &*movement_ : nullptr; }
     const MovementTrait* movement() const { return movement_ ? &*movement_ : nullptr; }
+    WeaponTrait* weapon() { return weapon_ ? &*weapon_ : nullptr; }
+    const WeaponTrait* weapon() const { return weapon_ ? &*weapon_ : nullptr; }
     void setTransform(TransformComponent transform);
 
 private:
@@ -62,6 +66,7 @@ private:
     TransformComponent transform_;
     std::unique_ptr<EntityVisual> visual_;
     std::optional<MovementTrait> movement_;
+    std::optional<WeaponTrait> weapon_;
 };
 
 class EntityManager {

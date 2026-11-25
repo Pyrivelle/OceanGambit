@@ -7,8 +7,11 @@
 EntityBuild ShipManager::build(const std::string& code) {
     // RTS prototype movement for 020528, independent of the model JSON.
     constexpr MovementTuning demoMovement{22., 3.5, 5., .40, 8.};
-    EntityBuild result{create(code), std::nullopt};
-    if (code == "020528") result.movement.emplace(demoMovement);
+    EntityBuild result{create(code), std::nullopt, std::nullopt};
+    if (code == "020528") {
+        result.movement.emplace(demoMovement);
+        result.weapon.emplace(WeaponTuning{1000.0, 4.0}); // RTS prototype only.
+    }
     return result;
 }
 

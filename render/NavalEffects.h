@@ -40,7 +40,7 @@ private:
     osg::Group& root_;
     ShipLookup lookup_;
     std::unordered_map<unsigned, Flight> flights_;
-    std::array<osg::ref_ptr<ShipDecals>, 2> decals_;
+    std::unordered_map<unsigned, osg::ref_ptr<ShipDecals>> decals_;
     std::vector<ImpactExplosion> explosions_;
     unsigned explosionsStarted_ = 0;
     std::array<unsigned, 2> decalCounts_{};

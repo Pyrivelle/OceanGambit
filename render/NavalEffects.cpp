@@ -26,7 +26,7 @@ void NavalEffects::contact(unsigned id, const std::optional<ProjectileContact>& 
 
 void NavalEffects::markShip(unsigned target, const ProjectileContact& hit, double now) {
     auto* targetShip = lookup_(target);
-    if (!targetShip || target >= decals_.size()) return;
+    if (!targetShip) return;
     auto& ship = *targetShip;
     const auto inverse = osg::Matrix::inverse(ship.node().getMatrix());
     const auto local = hit.position * inverse;
@@ -41,14 +41,17 @@ void NavalEffects::markShip(unsigned target, const ProjectileContact& hit, doubl
             markShipPosition_ = ship.node().getMatrix().getTrans();
         }
     }
-    if (decals_[target]->stampAt(local, normal, 2)) ++decalCounts_[target];
+    if (decals_[target]->stampAt(local, normal, 2) && target < decalCounts_.size())
+        ++decalCounts_[target];
     explosions_.emplace_back(ship.node(), local, now);
     ++explosionsStarted_;
 }
 
 void NavalEffects::advance(double now) {
-    for (unsigned slot = 0; slot < decals_.size(); ++slot)
-        if (decals_[slot] && !lookup_(slot)) decals_[slot] = nullptr;
+    for (auto it = decals_.begin(); it != decals_.end();) {
+        if (!lookup_(it->first)) it = decals_.erase(it);
+        else ++it;
+    }
     for (auto it = flights_.begin(); it != flights_.end();) {
         auto& flight = it->second;
         flight.effects->sampleExternalFlight(now, flight.position);

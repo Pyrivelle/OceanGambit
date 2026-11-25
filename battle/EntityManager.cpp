@@ -18,7 +18,8 @@ std::vector<EntityID> matching(const std::map<EntityID, std::unique_ptr<Entity>>
 Entity::Entity(EntityID id, EntityType type, std::string code, OwnerID owner,
                SelectionMode selection, EntityBuild built)
     : id_(id), type_(type), code_(std::move(code)), owner_(owner),
-      selection_(selection), visual_(std::move(built.visual)), movement_(std::move(built.movement)) {
+      selection_(selection), visual_(std::move(built.visual)), movement_(std::move(built.movement)),
+      weapon_(std::move(built.weapon)) {
     setTransform({});
 }
 
