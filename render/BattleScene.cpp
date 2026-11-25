@@ -47,8 +47,10 @@ struct BattleScene::Impl {
     void advance(double now) {
         while ((tick_ + 1) * ProjectileSystem::interval <= now + 1e-9) {
             const double time = ++tick_ * ProjectileSystem::interval;
-            if (rtsMovementEnabled_) updateMovement(time);
-            else if (!rtsWorld_) updateShipPoses(time);
+            if (rtsMovementEnabled_) {
+                updateMovement(time);
+                updateWeapons(time);
+            } else if (!rtsWorld_) updateShipPoses(time);
             projectiles_.step(
                 [this](unsigned source, const auto& from, const auto& to) { return trace(source, from, to); },
                 [this, time](unsigned id, const auto& position) { effects_.sample(id, position, time); },
@@ -96,6 +98,75 @@ struct BattleScene::Impl {
         }
     }
 
+    // RTS target acquisition is independent of movement orders. No fog of war in V1.
+    void updateWeapons(double now) {
+        const auto ids = entities_.findByType(EntityType::Ship);
+        for (const auto sourceId : ids) {
+            auto* source = entities_.find(sourceId);
+            if (!source || !source->weapon() || source->lifecycle() != EntityLifecycle::Active) continue;
+            auto& weapon = *source->weapon();
+
+            const auto valid = [&](EntityID targetId) {
+                const auto* target = entities_.find(targetId);
+                if (!target || target->type() != EntityType::Ship ||
+                    target->lifecycle() != EntityLifecycle::Active ||
+                    target->owner() == source->owner()) return false;
+                const auto delta = target->transform().position - source->transform().position;
+                return std::hypot(delta.x(), delta.y()) <= weapon.range();
+            };
+            // Retain an existing valid lock; otherwise choose the nearest enemy in range.
+            if (!weapon.target() || !valid(*weapon.target())) {
+                std::optional<EntityID> nearest;
+                double bestRange2 = weapon.range() * weapon.range();
+                for (const auto targetId : ids) {
+                    if (!valid(targetId)) continue;
+                    const auto delta = entities_.find(targetId)->transform().position -
+                                       source->transform().position;
+                    const double range2 = delta.x() * delta.x() + delta.y() * delta.y();
+                    if (range2 < bestRange2) {
+                        bestRange2 = range2;
+                        nearest = targetId;
+                    }
+                }
+                weapon.track(nearest);
+            }
+            if (!weapon.target() || !weapon.ready(now)) continue;
+            const auto slot = std::find(battleShips_.begin(), battleShips_.end(), sourceId);
+            if (slot == battleShips_.end()) continue;
+            if (launchAuto(static_cast<unsigned>(slot - battleShips_.begin()), *weapon.target(), now))
+                weapon.fired(now);
+            else
+                weapon.retry(now);
+        }
+    }
+
+    bool launchAuto(unsigned slot, EntityID targetId, double now) {
+        auto* target = entities_.find(targetId);
+        auto* source = battleEntity(slot);
+        if (!source || !target || target->lifecycle() != EntityLifecycle::Active) return false;
+        osg::Vec3d aim = target->transform().position + osg::Vec3d(0, 0, 3.8);
+        // First-order lead from target's current velocity and the existing ballistics
+        // flight-time solver. The live fire-control solver handles shooter motion.
+        osg::Vec3d velocity(0, 0, 0);
+        if (const auto* movement = target->movement()) {
+            const double speed = movement->speed();
+            const auto heading = target->transform().heading;
+            velocity.set(-std::sin(heading) * speed, std::cos(heading) * speed, 0);
+        }
+        if (velocity.length2() > 0) {
+            const double range = std::hypot(aim.x() - source->transform().position.x(),
+                                            aim.y() - source->transform().position.y());
+            const auto& gun = gunSettings_.at(slot);
+            const auto estimate = projectiles_.fireControlSolution(
+                range, aim.z() - source->transform().position.z(),
+                gun.arc, gun.minElevationRad(), gun.maxElevationRad());
+            const double flight = estimate.flightSeconds.value_or(
+                range / std::max(1.0, projectiles_.ammo().launchPace));
+            aim += velocity * flight;
+        }
+        return launchPlayer(slot, aim, now);
+    }
+
     void showMoveMarker(const osg::Vec3d& destination, double now) {
         if (!moveMarker_) {
             moveMarker_ = new osg::MatrixTransform;
@@ -108,7 +179,13 @@ struct BattleScene::Impl {
     }
 
     osg::Vec3d shipMotion(ShipID source, double time) const {
-        if (rtsWorld_) return {};
+        if (rtsWorld_) {
+            const auto* entity = battleEntity(source);
+            if (!entity || !entity->movement()) return {};
+            const auto speed = entity->movement()->speed();
+            const auto heading = entity->transform().heading;
+            return {-std::sin(heading) * speed, std::cos(heading) * speed, 0};
+        }
         const auto prev = scenario_.poses(time - ProjectileSystem::interval).at(source);
         const auto pose = scenario_.poses(time).at(source);
         return {(pose.x - prev.x) / ProjectileSystem::interval,
@@ -173,9 +250,9 @@ struct BattleScene::Impl {
     }
 
     // Aim from the physical muzzle; account for turret-induced displacement.
-    void launchPlayer(ShipID source, const osg::Vec3d& target, double time) {
+    bool launchPlayer(ShipID source, const osg::Vec3d& target, double time) {
         auto* active = findBattleShip(source);
-        if (!active) return;
+        if (!active) return false;
         auto& ship = *active;
         const auto gun = gunSettings_.at(source);
         MuzzlePose muzzle = ship.poseTurret(target);
@@ -195,7 +272,7 @@ struct BattleScene::Impl {
             const double range = horizontal.length();
             if (range < 1e-3) {
                 std::cerr << "Fire control: target is too close to muzzle\n";
-                return;
+                return false;
             }
             const auto solution = projectiles_.fireControlSolution(
                 range, predictedPoint.z() - muzzle.position.z(),
@@ -205,7 +282,7 @@ struct BattleScene::Impl {
                           << " ship=" << source + 1
                           << " range=" << range
                           << " height=" << target.z() - muzzle.position.z() << '\n';
-                return;
+                return false;
             }
             elevation = *solution.elevation;
             status = solution.status;
@@ -231,6 +308,7 @@ struct BattleScene::Impl {
                   << ") muzzle=(" << muzzle.position.x() << ','
                   << muzzle.position.y() << ',' << muzzle.position.z() << ")\n";
         spawn(source, muzzle, time);
+        return true;
     }
 
     void launchFree(ShipID source, const osg::Vec3d& viewDirection, double time) {
@@ -249,7 +327,7 @@ struct BattleScene::Impl {
 
     void spawn(ShipID source, const MuzzlePose& muzzle, double time) {
         const unsigned id = ++projectileId_;
-        ++launchCounts_.at(source);
+        if (source < launchCounts_.size()) ++launchCounts_[source];
         projectiles_.launch(id, source, muzzle.position, muzzle.forward,
                             shipMotion(source, time));
         effects_.launch(id, muzzle, time);
@@ -307,15 +385,18 @@ struct BattleScene::Impl {
         };
         const auto poses = scenario_.poses(0);
         for (unsigned slot = 0; slot < poses.size(); ++slot) {
-            battleShips_[slot] = add(poses[slot], slot + 1);
+            battleShips_.push_back(add(poses[slot], slot + 1));
             gunSettings_.push_back(loadShipWeaponSettings(findBattleShip(slot)->modelPath()));
         }
         if (extraShips) {
             const std::array<ShipPose, 4> formation{
                 {{-255, -265, osg::PI_4}, {255, -265, osg::PI_4},
                  {-255, 265, 3 * osg::PI_4}, {255, 265, 3 * osg::PI_4}}};
-            for (const auto& pose : formation)
-                add(pose, pose.y < 0 ? 1 : 2);
+            for (const auto& pose : formation) {
+                battleShips_.push_back(add(pose, pose.y < 0 ? 1 : 2));
+                gunSettings_.push_back(loadShipWeaponSettings(
+                    findBattleShip(static_cast<unsigned>(battleShips_.size() - 1))->modelPath()));
+            }
         }
     }
 
@@ -333,7 +414,7 @@ struct BattleScene::Impl {
     osg::ref_ptr<TritonOceanSurface> ocean_;
     ShipManager shipAssets_;
     EntityManager entities_;
-    std::array<EntityID, 2> battleShips_{};
+    std::vector<EntityID> battleShips_;
     DemoScenario scenario_;
     NavalEffects effects_;
     ProjectileSystem projectiles_;
