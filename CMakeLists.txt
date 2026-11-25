@@ -68,6 +68,10 @@ add_custom_target(OceanGambitRuntime ALL
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(WeaponTraitCheck tests/WeaponTraitCheck.cpp)
+    target_compile_features(WeaponTraitCheck PRIVATE cxx_std_17)
+    add_test(NAME WeaponTraitCheck COMMAND WeaponTraitCheck)
+
     add_executable(ProjectileCheck tests/ProjectileCheck.cpp battle/ProjectileSystem.cpp)
     target_compile_features(ProjectileCheck PRIVATE cxx_std_17)
     target_include_directories(ProjectileCheck PRIVATE ${OPENSCENEGRAPH_INCLUDE_DIRS} "${OPENGL_HEADERS}")

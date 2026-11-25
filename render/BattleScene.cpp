@@ -141,11 +141,11 @@ struct BattleScene::Impl {
     void launchAuto(unsigned slot, EntityID targetId, double now) {
         auto* target = entities_.find(targetId);
         auto* source = battleEntity(slot);
-        if (!source || !target || !target->weapon()) return;
+        if (!source || !target || target->lifecycle() != EntityLifecycle::Active) return;
         osg::Vec3d aim = target->transform().position + osg::Vec3d(0, 0, 3.8);
         // First-order lead from target's current velocity and the existing ballistics
         // flight-time solver. The live fire-control solver handles shooter motion.
-        osg::Vec3d velocity;
+        osg::Vec3d velocity(0, 0, 0);
         if (const auto* movement = target->movement()) {
             const double speed = movement->speed();
             const auto heading = target->transform().heading;
